@@ -2,8 +2,8 @@
    Rotas pelo endereço (#inicio, #vistorias, #nova, #v/<id>, #foto/<id>/<n>, #envios, #pronta/<id>, #config).
    Cada vistoria fica em vistorias/<id>.json e as fotos em fotos/<id>/<foto>.jpg, na memória interna do app. */
 
-const VERSAO_APP = '0.6.3 (piloto 4)';
-const CODIGO_APP = 10;              // sobe a cada APK: o Android só instala por cima versão com código maior
+const VERSAO_APP = '0.7.0 (piloto 5)';
+const CODIGO_APP = 11;              // sobe a cada APK: o Android só instala por cima versão com código maior
 let VIST = [];                       // vistorias carregadas
 let cfg = lerCfg();
 
