@@ -247,3 +247,75 @@ input.chave{font-family:ui-monospace,monospace;letter-spacing:1px;text-transform
 .versao>span{display:flex;flex-direction:column;gap:6px;min-width:0}.versao b{display:flex;gap:6px;align-items:center}.versao b .ic{width:18px;height:18px}
 .versao .txt{white-space:pre-wrap;word-break:break-word;font-size:15px;color:var(--texto)}
 .versao:has(input:checked){border-color:var(--azul-sec);background:var(--azul-claro2)}
+
+/* ===== animações (desenho do Stitch, 08/10/2026) =====
+   Curtas (120–250 ms), só transform e opacity, nada em laço a não ser o que indica espera.
+   Tocam só quando a tela muda, nunca ao redesenhar a mesma tela. A <main> anima sem "fill":
+   ao terminar não fica transform nela (senão os elementos fixos dentro dela sairiam do lugar). */
+:root{--m-entra:cubic-bezier(0,0,.2,1);--m-sai:cubic-bezier(.4,0,1,1);--m-padrao:cubic-bezier(.2,0,0,1)}
+main.anim-entra{animation:mEntra 200ms var(--m-entra)}
+main.anim-volta{animation:mVolta 200ms var(--m-entra)}
+main.anim-aba{animation:mAparece 150ms var(--m-entra)}
+@keyframes mEntra{from{transform:translate3d(24px,0,0);opacity:0}}
+@keyframes mVolta{from{transform:translate3d(-24px,0,0);opacity:0}}
+@keyframes mAparece{from{opacity:0}}
+/* cartões em cascata (até 6, 30 ms entre eles; o atraso vem do JS) */
+.surge{animation:mSobe 180ms var(--m-entra) backwards}
+@keyframes mSobe{from{transform:translate3d(0,8px,0);opacity:0}}
+/* trilha: a linha se preenche e o passo atual acende */
+main[class*="anim-"] .trilha i.f,main[class*="anim-"] .trilha i.c{transform-origin:left center;animation:mLinha 220ms var(--m-entra) 120ms backwards}
+main[class*="anim-"] .trilha .p.a,main[class*="anim-"] .trilha .p.e,main[class*="anim-"] .trilha .p.d{animation:mAcende 220ms var(--m-entra) 260ms backwards}
+@keyframes mLinha{from{transform:scaleX(0)}}
+@keyframes mAcende{from{transform:scale(.6);opacity:.3}}
+/* toque */
+.bt,.cartao,.versao,.nav-inf a,.chip-sinc,.mini{transition:transform 120ms var(--m-padrao);-webkit-tap-highlight-color:transparent}
+.bt:active,.cartao:active,.versao:active,.chip-sinc:active,.mini:active{transform:scale(.97)}
+.nav-inf a:active .ic{transform:scale(.92)}
+/* barra inferior: o destaque da aba nova cresce */
+.nav-inf a .ic{transition:transform 120ms var(--m-padrao)}
+.nav-inf.troca a.at .ic{animation:mPilula 220ms var(--m-padrao)}
+@keyframes mPilula{from{transform:scaleX(.4);opacity:.2}}
+/* botão "Nova vistoria": recolhe para o ícone ao rolar para baixo */
+.fab .rot{display:inline-block;max-width:180px;overflow:hidden;white-space:nowrap;transition:max-width 200ms var(--m-entra),opacity 150ms ease-out}
+.fab{transition:padding 200ms var(--m-entra),gap 200ms var(--m-entra),transform 120ms var(--m-padrao)}
+body.fab-recolhido .fab{padding:0 17px;gap:0}
+body.fab-recolhido .fab .rot{max-width:0;opacity:0}
+.fab:active{transform:scale(.95)}
+/* foto nova chega na faixa e o contador pula */
+.mini.chega{animation:mChega 240ms var(--m-entra)}
+@keyframes mChega{from{transform:scale(.4) translate3d(0,40px,0);opacity:0}}
+.cont.pula{animation:mPula 180ms var(--m-entra)}
+@keyframes mPula{50%{transform:scale(1.25)}}
+/* GPS: círculo pulsando enquanto procura; bloco acende quando acha */
+.pulso-gps{position:relative;width:28px;height:28px;flex:none}
+.pulso-gps::before,.pulso-gps::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--azul-sec)}
+.pulso-gps::before{inset:9px}
+.pulso-gps::after{opacity:.35;animation:mGps 1200ms ease-in-out infinite}
+@keyframes mGps{0%,100%{transform:scale(.55);opacity:.45}50%{transform:scale(1.1);opacity:.12}}
+.bloco.achou .utm{animation:mAchou 260ms var(--m-entra)}
+@keyframes mAchou{from{transform:scale(.94);opacity:0}}
+/* selo de envio no topo: barra correndo enquanto envia; ✓ ao terminar; balança uma vez se falhou */
+.chip-sinc.andando{position:relative;overflow:hidden}
+.chip-sinc.andando::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--azul-sec);animation:mFaixa 1000ms linear infinite}
+@keyframes mFaixa{from{transform:translate3d(-100%,0,0)}to{transform:translate3d(100%,0,0)}}
+.chip-sinc.chegou .ic{animation:mAcende 260ms var(--m-entra)}
+.chip-sinc.treme{animation:mTreme 260ms ease-in-out}
+@keyframes mTreme{25%{transform:translate3d(-4px,0,0)}50%{transform:translate3d(4px,0,0)}75%{transform:translate3d(-2px,0,0)}}
+/* "Vistoria concluída": o ✓ grande aparece */
+main[class*="anim-"] .grande-ok{animation:mAcende 260ms var(--m-entra) 80ms backwards}
+/* aviso de baixo, folhas, tela cheia e "aguarde" */
+#toast{transition:opacity 200ms var(--m-entra),transform 220ms var(--m-entra);transform:translate3d(0,20px,0)}
+#toast.vis{transform:none}
+.folha-fundo{animation:mAparece 180ms ease-out}
+.folha{animation:mFolha 220ms var(--m-entra)}
+@keyframes mFolha{from{transform:translate3d(0,100%,0)}}
+.tela-cheia{animation:mAparece 160ms ease-out}
+#ocupado{animation:mAparece 150ms ease-out 150ms backwards}   /* não pisca nas operações rápidas */
+#ocupado .cx{animation:mAcende 180ms var(--m-entra) 150ms backwards}
+/* escolher a versão: a escolhida acende */
+.versao{transition:transform 120ms var(--m-padrao),background-color 150ms ease-out,border-color 150ms ease-out}
+/* quem pediu menos movimento no Android: só o que indica espera continua */
+@media (prefers-reduced-motion:reduce){
+ *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;animation-delay:0s!important;transition-duration:.01ms!important}
+ .giro{animation-duration:.8s!important;animation-iteration-count:infinite!important}
+}

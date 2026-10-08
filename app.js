@@ -2,8 +2,8 @@
    Rotas pelo endereço (#inicio, #vistorias, #nova, #v/<id>, #foto/<id>/<n>, #envios, #pronta/<id>, #config).
    Cada vistoria fica em vistorias/<id>.json e as fotos em fotos/<id>/<foto>.jpg, na memória interna do app. */
 
-const VERSAO_APP = '0.7.0 (piloto 5)';
-const CODIGO_APP = 11;              // sobe a cada APK: o Android só instala por cima versão com código maior
+const VERSAO_APP = '0.7.1 (piloto 5)';
+const CODIGO_APP = 12;              // sobe a cada APK: o Android só instala por cima versão com código maior
 let VIST = [];                       // vistorias carregadas
 let cfg = lerCfg();
 
@@ -51,7 +51,7 @@ async function preencherImagens(v){ for(const im of $$('img[data-foto]')){ const
 /* ---------- avisos ---------- */
 function aviso(texto, ms){ let t=$('#toast'); if(!t){ t=document.createElement('div'); t.id='toast'; t.setAttribute('role','status'); document.body.appendChild(t); }
  t.textContent=texto; t.classList.add('vis'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('vis'), ms||3200); }
-function ocupado(texto){ let o=$('#ocupado'); if(texto===false){ if(o) o.remove(); return; } if(!o){ o=document.createElement('div'); o.id='ocupado'; document.body.appendChild(o); } o.innerHTML='<div class="cx"><div class="giro"></div><div>'+esc(texto)+'</div></div>'; }
+function ocupado(texto, op){ let o=$('#ocupado'); if(texto===false){ if(o) o.remove(); return; } if(!o){ o=document.createElement('div'); o.id='ocupado'; document.body.appendChild(o); } o.innerHTML='<div class="cx">'+(op&&op.gps? '<div class="pulso-gps" aria-hidden="true"></div>' : '<div class="giro"></div>')+'<div>'+esc(texto)+'</div></div>'; }
 
 /* ---------- moldura comum ---------- */
 function topo(titulo, opc){ opc=opc||{};
@@ -114,7 +114,7 @@ TELAS.inicio = function(){
   (e.length? '<h2 class="secao">Em andamento <span class="cont">'+e.length+'</span></h2>'+e.map(cartao).join('') : '')+
   '<h2 class="secao">Para vistoriar <span class="cont">'+(a.length+dp.length)+'</span></h2>'+linhaPlanilha()+((a.length||dp.length)? dp.slice(0,limDem).map(cartaoDemanda).join('')+(dp.length>limDem? '<a class="resumo-docs" href="#vistorias">'+ic('lista')+'<span>e mais '+(dp.length-limDem)+' demanda'+(dp.length-limDem>1?'s':'')+' da planilha</span>'+ic('voltar','seta-dir')+'</a>' : '')+a.map(cartao).join('') :
    '<div class="vazio">'+ic('lista')+'<p>Nenhuma vistoria agendada.</p><p class="ajuda">'+(cfg.planilhaAtiva? 'Nenhuma demanda aberta sem vistoria na última leitura da planilha.' : 'Ligue as demandas da planilha em Meus dados, ou toque em “Nova vistoria”.')+'</p></div>')+
-  '</main><button class="fab" data-ir="#nova">'+ic('mais')+'Nova vistoria</button>'+navInferior('#inicio');
+  '</main><button class="fab" data-ir="#nova" aria-label="Nova vistoria">'+ic('mais')+'<span class="rot">Nova vistoria</span></button>'+navInferior('#inicio');
 };
 
 let abaVist='a_vistoriar', buscaVist='';
@@ -129,7 +129,7 @@ TELAS.vistorias = function(){
   '<div class="abas" role="tablist">'+abas.map(([k,r])=>'<button role="tab" aria-selected="'+(k===abaVist)+'" data-aba="'+k+'">'+r+' <span class="cont">'+contar(k)+'</span></button>').join('')+'</div>'+
   (['a_vistoriar','fiscalizadas'].includes(abaVist)? linhaPlanilha() : '')+(abaVist==='fiscalizadas'? '<p class="ajuda">Demandas ainda abertas na planilha que já têm vistoria: o que falta é o documento.</p>' : '')+
   '<div id="vLista">'+((lista.length||dems.length)? dems.map(cartaoDemanda).join('')+lista.map(cartao).join('') : '<div class="vazio"><p>Nada aqui'+(q?' com essa busca':'')+'.</p></div>')+'</div>'+
-  '</main><button class="fab" data-ir="#nova">'+ic('mais')+'Nova vistoria</button>'+navInferior('#vistorias');
+  '</main><button class="fab" data-ir="#nova" aria-label="Nova vistoria">'+ic('mais')+'<span class="rot">Nova vistoria</span></button>'+navInferior('#vistorias');
 };
 TELAS.vistorias.ligar = function(){
  $$('[data-aba]').forEach(b=>b.onclick=()=>{ abaVist=b.dataset.aba; mostrar(); });
@@ -235,8 +235,8 @@ TELAS.v.ligar = function(id){
 };
 
 async function registrarPosicao(v){
- ocupado('Buscando o sinal do GPS…');
- try{ const p=await Aparelho.posicao(); v.local=posicaoDe(p.lat, p.lon, p.precisao); await gravarVistoria(v); ocupado(false); mostrar(true);
+ ocupado('Buscando o sinal do GPS…', {gps:true});
+ try{ const p=await Aparelho.posicao(); v.local=posicaoDe(p.lat, p.lon, p.precisao); await gravarVistoria(v); ocupado(false); mostrar(true); animarLocal();
   aviso('Posição registrada'+(v.local.precisao!==null? ' (±'+v.local.precisao+' m)' : '')+'.'); }
  catch(e){ ocupado(false); alert(e.message||String(e)); }
 }
@@ -261,7 +261,7 @@ async function novaFotoCamera(v){
   const gps=await gpsP; const f=await guardarFoto(v, blob, 'camera', gps, quando);
   let msg='Foto '+v.fotos.length+' guardada.';
   if(!v.local && f.exif && f.exif.e!==undefined){ v.local=posicaoDe(f.exif.lat, f.exif.lon, gps? gps.precisao : null); msg+=' Local da vistoria registrado pela posição da foto.'; }
-  await gravarVistoria(v); ocupado(false); mostrar(true); aviso(msg, 4000);
+  await gravarVistoria(v); ocupado(false); mostrar(true); animarFotosNovas(1); aviso(msg, 4000);
  }catch(e){ ocupado(false); alert('A foto não pôde ser guardada: '+(e.message||e)); }
 }
 async function fotosDaGaleria(v){
@@ -269,7 +269,7 @@ async function fotosDaGaleria(v){
  if(!blobs.length) return;
  ocupado('Guardando '+blobs.length+' foto'+(blobs.length>1?'s':'')+'…'); let falhas=0, antes=v.fotos.length;
  for(const b of blobs){ try{ await guardarFoto(v, b, 'galeria', null, null); }catch(e){ falhas++; } }
- await gravarVistoria(v); ocupado(false); mostrar(true);
+ await gravarVistoria(v); ocupado(false); mostrar(true); animarFotosNovas(v.fotos.length-antes);
  const novas=v.fotos.slice(antes), outroDia=novas.filter(f=>alertasFoto(v,f).some(a=>a.tipo==='data')).length, semDados=novas.filter(f=>!f.exif).length;
  aviso((v.fotos.length-antes)+' foto(s) incluída(s).'+(falhas? ' '+falhas+' não puderam ser lidas.' : '')+(outroDia? ' '+outroDia+' de outro dia: confira.' : '')+(semDados? ' '+semDados+' sem data/GPS no arquivo.' : ''), 5000);
 }
@@ -908,10 +908,42 @@ let rotaAnterior='';
 function mostrar(manterRolagem){
  if(!cfg.nome && rotaAtual().nome!=='config'){ history.replaceState(null, '', '#config'); }
  const r=rotaAtual(), tela=TELAS[r.nome]||TELAS.inicio, y=window.scrollY, chave=location.hash;
+ const mov=movimentoDe(chave), chipAntes=($('.chip-sinc')||{}).className||'';
  document.getElementById('app').innerHTML=tela.apply(null, r.args);
  if(tela.ligar) tela.ligar.apply(null, r.args);
  window.scrollTo(0, manterRolagem && chave===rotaAnterior? y : 0); rotaAnterior=chave;
+ animarTela(mov, chipAntes);
 }
+
+/* ---------- animações (o CSS está no fim de app.css) ----------
+   Mais fundo desliza da direita, voltar desliza da esquerda, trocar de aba só esmaece.
+   Redesenhar a mesma tela (mostrar(true) depois de gravar ou enviar) não anima nada. */
+const ABAS=['inicio','vistorias','camera','documentos','envios'];
+let pilhaTelas=[];
+function movimentoDe(chave){
+ if(chave===rotaAnterior) return '';
+ if(!rotaAnterior){ pilhaTelas=[chave]; return 'aba'; }
+ const nome=h=>(h||'#inicio').slice(1).split('/')[0]||'inicio';
+ if(ABAS.includes(nome(chave)) && ABAS.includes(nome(rotaAnterior))){ pilhaTelas=[chave]; return 'aba'; }
+ if(pilhaTelas.length>1 && pilhaTelas[pilhaTelas.length-2]===chave){ pilhaTelas.pop(); return 'volta'; }
+ if(ABAS.includes(nome(chave))){ pilhaTelas=[chave]; return 'volta'; }
+ pilhaTelas.push(chave); if(pilhaTelas.length>30) pilhaTelas.shift(); return 'entra';
+}
+function animarTela(mov, chipAntes){
+ const chip=$('.chip-sinc');
+ if(chip && /andando/.test(chipAntes) && !chip.classList.contains('andando')) chip.classList.add(chip.classList.contains('ok')? 'chegou' : 'treme');
+ if(!mov) return;
+ document.body.classList.remove('fab-recolhido'); ultimoY=0;
+ const m=$('#app main'); if(m) m.classList.add('anim-'+mov);
+ if(mov==='aba'){ const n=$('.nav-inf'); if(n) n.classList.add('troca'); }
+ $$('#app main .cartao').slice(0,6).forEach((c,i)=>{ c.style.animationDelay=(i*30)+'ms'; c.classList.add('surge'); });
+}
+function animarFotosNovas(n){ const minis=$$('.minis .mini'); minis.slice(-Math.min(n,6)).forEach(el=>el.classList.add('chega')); const c=$('.h-cont .cont'); if(c && n) c.classList.add('pula'); }
+function animarLocal(){ const b=$('#vGps'); const s=b && b.closest('.bloco'); if(s) s.classList.add('achou'); }
+let ultimoY=0;
+window.addEventListener('scroll', ()=>{ const y=window.scrollY, f=$('.fab'); if(!f) return;
+ if(y>ultimoY+6 && y>120) document.body.classList.add('fab-recolhido'); else if(y<ultimoY-6) document.body.classList.remove('fab-recolhido');
+ ultimoY=y; }, {passive:true});
 document.addEventListener('click', e=>{
  const ir=e.target.closest('[data-ir]'); if(ir){ e.preventDefault(); location.hash=ir.dataset.ir; return; }
  if(e.target.closest('[data-voltar]')){ e.preventDefault(); voltar(); return; }

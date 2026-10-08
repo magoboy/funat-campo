@@ -163,7 +163,7 @@ function resumoDocumento(o, caminho, modificado){
  if(!o || typeof o!=='object' || !Array.isArray(o.infracoes)) return null;           // não é caso das ferramentas
  const R=o.revisao||{}, H=Array.isArray(R.historico)? R.historico : [], N=Array.isArray(R.notas)? R.notas : [];
  const st=ESTADOS_DOC[R.status]? R.status : 'em_elaboracao';
- const B=o.rel||o.simp||o.arq||o.ruido||{};
+ const B=o[{relatorio_simplificado:'simp', termo_arquivamento:'arq', termo_ruido:'ruido'}[o.tipoDocumento]||'rel']||{};   // pelo tipo: um termo pode ter sobra de "rel"
  let protocolo='', titulo='';
  if(o.tipoDocumento==='relatorio_simplificado'){ protocolo=expedienteDe(B.expedienteTipo, B.expedienteNum, 'Atendimento'); titulo=B.atividade||''; }
  else if(o.tipoDocumento==='termo_arquivamento'){ protocolo=expedienteDe(B.expedienteTipo, B.expedienteNum, '1Doc'); titulo=String(B.corpo||'').replace(/\s+/g,' ').slice(0,80); }
@@ -205,7 +205,7 @@ function parseProtocolo(texto){
 }
 function semAcentoModelo(t){ return String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,''); }
 /* Número sem pontos e sem zeros à esquerda, com o ano quando houver: "01.234/2026" → "1234/2026" */
-function chaveProtocolo(texto){ const m=/(\d[\d.]*)\s*(?:\/\s*(\d{4}|\d{2})(?!\d))?/.exec(String(texto||'')); if(!m) return ''; const n=m[1].replace(/\./g,'').replace(/^0+(?=\d)/,''); return m[2]? n+'/'+(m[2].length===2? '20'+m[2] : m[2]) : n; }
+function chaveProtocolo(texto){ const m=/(\d[\d.]*)\s*(?:\/\s*(\d{4}|\d{2})(?!\d))?/.exec(String(texto||'').replace(/\b1\s*doc\b/ig,' ')); /* o 1 de "1Doc" não é o número */ if(!m) return ''; const n=m[1].replace(/\./g,'').replace(/^0+(?=\d)/,''); return m[2]? n+'/'+(m[2].length===2? '20'+m[2] : m[2]) : n; }
 /* O documento da pasta é desta demanda? Mesmo número e ano; documento sem ano casa só pelo número */
 function mesmoProtocolo(chaveDemanda, textoDoc){
  const d=chaveProtocolo(textoDoc); if(!d || !chaveDemanda) return false;
