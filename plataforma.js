@@ -149,6 +149,11 @@ const Aparelho = {
   if(NATIVO){ try{ await P.AppLauncher.openUrl({url:url}); return; }catch(e){} }
   window.open('https://www.google.com/maps/search/'+encodeURIComponent(texto), '_blank');
  },
+ /* rota do itinerário no Google Maps (app de mapas no celular; navegador no computador) */
+ async abrirUrl(url){ if(NATIVO){ try{ await P.AppLauncher.openUrl({url:url}); return; }catch(e){} } window.open(url, '_blank'); },
+ async compartilharTexto(titulo, texto){ if(NATIVO){ await P.Share.share({title:titulo, text:texto, dialogTitle:titulo}); return; }
+  if(navigator.share){ try{ await navigator.share({title:titulo, text:texto}); return; }catch(e){ if(e && e.name==='AbortError') return; } }
+  try{ await navigator.clipboard.writeText(texto); }catch(e){} },
  aoVoltar(cb){ if(NATIVO && !IS_IOS) P.App.addListener('backButton', cb); },
  sair(){
   if(IS_IOS){
@@ -175,7 +180,15 @@ const Pasta = MODO_WEB ? new Proxy({}, {get:(_, k)=> k==='configuracao'? async()
   listarJson:async (caminho, prof)=>(await pl.listarJson({caminho:caminho, profundidade:prof===undefined?2:prof})).itens,
   lerVarios:async (base, caminhos)=>(await pl.lerVarios({base:base, caminhos:caminhos})).arquivos,
   lerCompleto:(base, caminho)=>pl.lerCompleto({base:base, caminho:caminho}),
-  encaminhar:o=>pl.encaminhar(o)
+  encaminhar:o=>pl.encaminhar(o),
+  /* atualização do app (0.8.0) */
+  lerVersao:pasta=>pl.lerVersao({pasta:pasta}),
+  baixarAtualizacao:async (o, aoProgresso)=>{ const h=await pl.addListener('progressoAtualizacao', p=>aoProgresso && aoProgresso(p.lidos, p.total));
+   try{ return await pl.baixarAtualizacao({pasta:o.pasta, arquivo:o.arquivo, tamanho:String(o.tamanho), sha256:o.sha256}); } finally{ h.remove(); } },
+  podeInstalar:async()=>(await pl.podeInstalar()).pode,
+  abrirPermissaoInstalar:()=>pl.abrirPermissaoInstalar(),
+  instalarAtualizacao:()=>pl.instalarAtualizacao(),
+  apagarAtualizacao:()=>pl.apagarAtualizacao()
  }; })() : (()=>{
  const arvore={'FISCALIZAÇÃO':{'FISCALIZAÇÃO 2026':{'DOCUMENTOS PARA REVISÃO - DILMAR':{}, 'Documentos para revisão - FELIS':{}, 'DOCUMENTOS PARA REVISÃO  - MARCELO':{}, 'DOCUMENTOS PARA REVISÃO - TESTE JULIO':{}, 'modelos':{}}}};
  const no=c=>String(c||'').split('\\').filter(Boolean).reduce((a,k)=>a&&a[k], arvore);
@@ -190,7 +203,11 @@ const Pasta = MODO_WEB ? new Proxy({}, {get:(_, k)=> k==='configuracao'? async()
   existe:async c=>{ const p=c.split('\\'), f=p.pop(), n=no(p.join('\\')); return !!(n && n[f]); },
   enviar:async o=>{ const pp=o.destinoPasta.split('\\'); if(pp.length<3 || pp[pp.length-1].toUpperCase()!=='VISTORIAS' || !/^FISCALIZA/i.test(pp[0])) throw erro('Destino recusado: o app só grava na subpasta VISTORIAS de uma pasta dentro de FISCALIZAÇÃO.','DESTINO');
    const p=o.destinoPasta.split('\\'), ult=p.pop(), pai=no(p.join('\\')); if(!pai) throw erro('A pasta escolhida não existe mais no servidor.','NAO_ACHOU');
-   pai[ult]=pai[ult]||{}; pai[ult][o.nome]='arquivo'; return {caminho:o.destinoPasta+'\\'+o.nome, tamanho:1, em:Date.now()}; },
+   pai[ult]=pai[ult]||{}; const cam=o.destinoPasta+'\\'+o.nome, meta=(window.__simArq=window.__simArq||{}), la=pai[ult][o.nome]? (meta[cam]||{id:'', mod:0}) : null;
+   /* as mesmas regras do módulo nativo: só grava por cima do mesmo caso; reenvio exige o arquivo lá; data conferida */
+   if(o.jaEnviado && !la) throw erro('A vistoria enviada antes não está mais em VISTORIAS. Nada foi gravado.','SUMIU');
+   if(la && o.id){ if(la.id && la.id!==o.id) throw erro('Já existe na pasta um arquivo de OUTRO caso com o nome '+o.nome+'.','EXISTE'); if(Number(o.modificado)>0 && la.mod!==Number(o.modificado)) throw erro('O arquivo desta vistoria na pasta foi alterado no computador depois do envio.','MUDOU'); }
+   const mod=Date.now(); pai[ult][o.nome]='arquivo'; meta[cam]={id:o.id||'', mod:mod}; return {caminho:o.destinoPasta+'\\'+o.nome, tamanho:1, em:mod, modificado:mod}; },
   /* documentos simulados: os exemplos de "04 - Testes e Exemplos/_teste" e um devolvido montado aqui */
   listarJson:async ()=>[{caminho:'Atend. 1234 - 18-09-2026.json', modificado:Date.now()-864e5*3, tamanho:2802},
    {caminho:'APROVADOS\\Relatorio_Fiscalizacao.json', modificado:Date.now()-864e5, tamanho:6722}, {caminho:'DEVOLVIDOS\\Atend. 999-2026.json', modificado:Date.now()-36e5, tamanho:900}],
@@ -198,7 +215,16 @@ const Pasta = MODO_WEB ? new Proxy({}, {get:(_, k)=> k==='configuracao'? async()
    if(/999/.test(c)) return {caminho:c, texto:JSON.stringify(docSimulado999())};
    const r=await fetch('/04%20-%20Testes%20e%20Exemplos/_teste/'+encodeURIComponent(c.split('\\').pop())); return {caminho:c, texto:await r.text()}; })),
   lerCompleto:async (base, c)=>({texto:JSON.stringify(docSimulado999()), modificado:1000, tamanho:900}),
-  encaminhar:async o=>{ if(o.modificado!==1000) throw erro('O arquivo foi alterado na pasta depois que você abriu a correção.','MUDOU'); window.__encaminhado=o; return {caminho:o.base+'\\'+o.nome, renomeado:false}; }
+  encaminhar:async o=>{ if(o.modificado!==1000) throw erro('O arquivo foi alterado na pasta depois que você abriu a correção.','MUDOU'); window.__encaminhado=o; return {caminho:o.base+'\\'+o.nome, renomeado:false}; },
+  /* atualização simulada: no navegador, localStorage['funat-simular-atualizacao']='1' faz aparecer uma versão nova */
+  lerVersao:async ()=>{ if(!conf.temSenha) throw erro('O acesso à pasta ainda não foi configurado.','SEM_CONFIG');
+   if(localStorage.getItem('funat-simular-atualizacao')!=='1') return {existe:false};
+   return {existe:true, texto:JSON.stringify({versao:'9.9.9 (simulada)', codigo:999, arquivo:'FUNAT Fiscalização 9.9.9.apk', tamanho:10515509, sha256:'0'.repeat(64), minimo:Number(localStorage.getItem('funat-simular-minimo')||0), novidades:['Itinerário do dia (simulado)','Atualização automática']})}; },
+  baixarAtualizacao:async (o, aoProgresso)=>{ for(let l=0; l<o.tamanho; l+=2e6){ aoProgresso && aoProgresso(l, o.tamanho); await new Promise(r=>setTimeout(r,150)); } aoProgresso && aoProgresso(o.tamanho, o.tamanho); return {caminho:'simulado/atualizacao.apk', tamanho:o.tamanho}; },
+  podeInstalar:async()=>localStorage.getItem('funat-simular-permissao')!=='0',
+  abrirPermissaoInstalar:async()=>{ localStorage.setItem('funat-simular-permissao','1'); },
+  instalarAtualizacao:async()=>{ window.__instalou=true; },
+  apagarAtualizacao:async()=>{}
  }; })();
 function docSimulado999(){ return {id:'dev999', tipoDocumento:'relatorio_simplificado', infracoes:[{}], elaborador:'Felisberto Oliveira da Silva', fiscal:'Felisberto Oliveira da Silva',
   simp:{expedienteTipo:'Atendimento', expedienteNum:'999/2026', atividade:'Cerâmica Vale do Capivari Ltda.', logradouro:'Rua A', numero:'10', referencia:'', bairro:'Capivari', coordE:'', coordN:'', responsavel:'', doc:'',
@@ -224,6 +250,34 @@ function aoVoltarParaOApp(cb){ if(NATIVO) P.App.addListener('resume', cb); else 
    No celular o pedido sai pelo plugin nativo de HTTP (segue o redirecionamento do Google, sem CORS).
    A chave fica cifrada no cofre (plugin PastaFunat). No navegador: chave no localStorage e, com a
    URL "simulado", demandas de exemplo. */
+/* ---------- rotas pelas ruas (OSRM público, como no RotaFácil) ----------
+   Só vão as coordenadas das paradas (nada de protocolo, nome ou assunto). Sem internet, o app usa a linha reta. */
+const OSRM='https://router.project-osrm.org';
+async function pedirJson(url, ms){
+ /* o servidor público do OSRM pede que o programa se identifique */
+ if(NATIVO){ const r=await CAP.Plugins.CapacitorHttp.get({url:url, headers:{'User-Agent':'FUNAT-Fiscalizacao/'+(typeof CODIGO_APP!=='undefined'? CODIGO_APP : '')+' (FUNAT Tubarao/SC; app de campo)'}, connectTimeout:ms||15000, readTimeout:ms||20000}); if(r.status!==200) throw new Error('HTTP '+r.status); return typeof r.data==='string'? JSON.parse(r.data) : r.data; }
+ const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(), ms||20000);
+ try{ const r=await fetch(url, {signal:ctl.signal}); if(!r.ok) throw new Error('HTTP '+r.status); return await r.json(); } finally{ clearTimeout(t); }
+}
+const Rotas = {
+ /* matriz de distâncias (m) e tempos (s) pelas ruas, de todos para todos */
+ async matriz(pts){
+  const c=pts.map(p=>p.lng.toFixed(6)+','+p.lat.toFixed(6)).join(';');
+  const o=await pedirJson(OSRM+'/table/v1/driving/'+c+'?annotations=distance,duration');
+  if(o.code!=='Ok' || !o.distances || !o.durations) throw new Error('o serviço de rotas não respondeu');
+  const fixa=(m, alt)=>m.map((l,i)=>l.map((v,j)=>v===null||v===undefined? alt[i][j] : v));   /* ponto sem rua por perto: linha reta */
+  const reta=matrizLinhaReta(pts);
+  return {dist:fixa(o.distances, reta.dist), dur:fixa(o.durations, reta.dur), fonte:'ruas'};
+ },
+ /* o desenho da rota na ordem escolhida (para o mapa); [[lat,lng],…] */
+ async tracado(pts){
+  const c=pts.map(p=>p.lng.toFixed(6)+','+p.lat.toFixed(6)).join(';');
+  const o=await pedirJson(OSRM+'/route/v1/driving/'+c+'?overview=simplified&geometries=geojson');
+  if(o.code!=='Ok' || !o.routes || !o.routes[0]) throw new Error('sem traçado');
+  return o.routes[0].geometry.coordinates.map(x=>[+x[1].toFixed(5), +x[0].toFixed(5)]);
+ }
+};
+
 const Planilha = {
  async chave(){ if(NATIVO){ try{ return (await CAP.registerPlugin('PastaFunat').chavePlanilha()).chave||''; }catch(e){ return ''; } } return localStorage.getItem('funat-campo-chave-planilha')||''; },
  async guardarChave(k){ if(NATIVO) await CAP.registerPlugin('PastaFunat').guardarChavePlanilha({chave:k}); else localStorage.setItem('funat-campo-chave-planilha', k); },
@@ -231,24 +285,36 @@ const Planilha = {
   if(!url) throw Object.assign(new Error('O endereço do script da planilha não está configurado.'), {code:'SEM_CONFIG'});
   if(!chave) throw Object.assign(new Error('Falta a chave da planilha (Meus dados › Demandas da planilha).'), {code:'SEM_CONFIG'});
   if(url==='simulado') return demandasSimuladas(chave);
-  const alvo=url+(url.indexOf('?')<0?'?':'&')+'chave='+encodeURIComponent(chave);
+  const alvo=url+(url.indexOf('?')<0?'?':'&')+'chave='+encodeURIComponent(chave)+'&equipe=1';
   let corpo;
   try{
    if(NATIVO){ const r=await CAP.Plugins.CapacitorHttp.get({url:alvo, connectTimeout:20000, readTimeout:30000}); if(r.status!==200) throw new Error('HTTP '+r.status); corpo=r.data; }
    else { const r=await fetch(alvo, {redirect:'follow'}); if(!r.ok) throw new Error('HTTP '+r.status); corpo=await r.text(); }
   }catch(e){ throw Object.assign(new Error('Sem acesso à internet agora (a lista é atualizada num Wi-Fi com internet, como o da FUNAT).'), {code:'SEM_REDE'}); }
   let o; try{ o=typeof corpo==='string'? JSON.parse(corpo) : corpo; }catch(e){ throw Object.assign(new Error('A planilha respondeu algo inesperado. Confira o endereço do script.'), {code:'RESPOSTA'}); }
+  if(o && o.erro==='ocupado') throw Object.assign(new Error(o.mensagem||'A planilha está ocupada. Tente de novo em instantes.'), {code:'OCUPADO'});   // V50: outro celular está sendo atendido
   if(!o || !o.ok) throw Object.assign(new Error(o && o.erro==='chave'? 'Chave recusada pela planilha (errada ou desativada).' : 'Erro no script da planilha: '+((o&&o.mensagem)||'sem detalhes')), {code:o&&o.erro==='chave'?'CHAVE':'SCRIPT'});
   return o;
  }
 };
 function demandasSimuladas(chave){
  if(!/^[A-Z0-9]{4}(-?[A-Z0-9]{4}){3}$/i.test(chave)) throw Object.assign(new Error('Chave recusada pela planilha (errada ou desativada).'), {code:'CHAVE'});
- return {ok:true, fiscal:'FELISBERTO', geradoEm:new Date().toISOString(), demandas:[
+ const r={ok:true, fiscal:'FELISBERTO', versaoScript:'49.0', geradoEm:new Date().toISOString(), demandas:[
   {linha:411, entrada:'30/01/2026', protocolo:'Memorando 1.998/2026', assunto:'Empreendimento Sem Licença', endereco:'São João ME - Rua João Bristot, 682', repasse:'30/01/2026', diligencias:'', observacoes:'', situacao:'nao_iniciada'},
   {linha:602, entrada:'22/09/2026', protocolo:'Atendimento 1.385/2026', assunto:'Construção em APP', endereco:'Vila Moema', repasse:'24/09/2026', diligencias:'', observacoes:'Denunciante pede retorno', situacao:'nao_iniciada'},
   {linha:640, entrada:'01/10/2026', protocolo:'999/2026', assunto:'Cerâmica Vale do Capivari', endereco:'Capivari de Baixo', repasse:'02/10/2026', diligencias:'Fiscalizado 03/10/2026', observacoes:'', situacao:'pendente_relatorio', situacaoTexto:'Pendente relatório (1Doc)'},
   {linha:590, entrada:'18/09/2026', protocolo:'Atendimento 1234/2026', assunto:'Poda irregular', endereco:'Centro - Rua Lauro Müller, 50', repasse:'18/09/2026', diligencias:'Fiscalizado 18/09/2026', observacoes:'', situacao:'em_analise', situacaoTexto:'Em análise técnica'}]};
+ /* script V49: posição de cada endereço, a FUNAT e as demandas dos colegas (só consulta no app) */
+ const pos=[[-28.4930,-49.0040],[-28.4990,-49.0225],null,[-28.4795,-49.0110]];
+ r.demandas.forEach((d,i)=>{ if(pos[i]) d.posicao={lat:pos[i][0], lng:pos[i][1], precisao:'exata'}; else d.posicao={precisao:'nao_achou'}; });
+ r.base={nome:'FUNAT', endereco:'Avenida Marechal Deodoro, 1311, Oficinas, Tubarão - SC, Brasil', posicao:{lat:-28.4846, lng:-49.0203, precisao:'numero'}};
+ r.equipe=[
+  {linha:650, entrada:'05/10/2026', protocolo:'Atendimento 1.399/2026', assunto:'Descarte irregular de resíduos', endereco:'Rua Coronel Cabral, 412, Centro', fiscal:'MARCELO', repasse:'06/10/2026', diligencias:'', situacao:'nao_iniciada', doColega:true, posicao:{lat:-28.4760, lng:-49.0080, precisao:'exata'}},
+  {linha:651, entrada:'07/10/2026', protocolo:'Atendimento 1.412/2026', assunto:'Esgoto a céu aberto', endereco:'Rua Pedro Gomes, 88, Humaitá', fiscal:'MARCELO', repasse:'07/10/2026', diligencias:'', situacao:'nao_iniciada', doColega:true, posicao:{lat:-28.4650, lng:-49.0190, precisao:'numero'}},
+  {linha:652, entrada:'08/10/2026', protocolo:'Memorando 31.201/2026', assunto:'Esgoto a céu aberto', endereco:'Rua Exemplo, nº 77, Oficinas', fiscal:'MARCELO', repasse:'08/10/2026', diligencias:'Retornar com a Casan', situacao:'em_andamento', doColega:true, posicao:{lat:-28.4880, lng:-49.0260, precisao:'rua'}},
+  {linha:653, entrada:'09/10/2026', protocolo:'Atendimento 1.420/2026', assunto:'Supressão de vegetação', endereco:'Rua Laguna, 310, Oficinas', fiscal:'DILMAR', repasse:'09/10/2026', diligencias:'', situacao:'nao_iniciada', doColega:true, posicao:{lat:-28.4905, lng:-49.0300, precisao:'exata'}},
+  {linha:654, entrada:'10/10/2026', protocolo:'Atendimento 1.433/2026', assunto:'Queima de resíduos', endereco:'Estrada Alto Pedrinhas', fiscal:'DILMAR', repasse:'10/10/2026', diligencias:'', situacao:'nao_iniciada', doColega:true, posicao:{precisao:'nao_achou'}}];
+ return r;
 }
 
 /* Versão web: pede ao navegador para não apagar os dados do app quando faltar espaço */

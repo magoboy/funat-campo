@@ -2,8 +2,8 @@
    Rotas pelo endereço (#inicio, #vistorias, #nova, #v/<id>, #foto/<id>/<n>, #envios, #pronta/<id>, #config).
    Cada vistoria fica em vistorias/<id>.json e as fotos em fotos/<id>/<foto>.jpg, na memória interna do app. */
 
-const VERSAO_APP = '0.7.1 (piloto 5)';
-const CODIGO_APP = 12;              // sobe a cada APK: o Android só instala por cima versão com código maior
+const VERSAO_APP = '0.9.4 (piloto 9)';
+const CODIGO_APP = 18;              // sobe a cada APK: o Android só instala por cima versão com código maior
 let VIST = [];                       // vistorias carregadas
 let cfg = lerCfg();
 
@@ -16,7 +16,7 @@ function primeiroNome(n){ return String(n||'').trim().split(/\s+/)[0]||''; }
 
 /* ---------- ícones (traço simples, sem fonte externa) ---------- */
 const ICONE = {
- voltar:'<path d="M15 18l-6-6 6-6"/>', fechar:'<path d="M6 6l12 12M18 6L6 18"/>',
+ voltar:'<path d="M15 18l-6-6 6-6"/>', fechar:'<path d="M6 6l12 12M18 6L6 18"/>', baixar:'<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>', rota:'<circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="5" r="2.2"/><path d="M8.2 19H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.8"/>',
  casa:'<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>', lista:'<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
  camera:'<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>', enviar:'<path d="M4 12l16-8-6 16-2-7z"/>',
  galeria:'<rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="9" r="1.5"/><path d="M20 15l-5-5-9 9"/>',
@@ -33,12 +33,27 @@ const ICONE = {
 function ic(n, cls){ return '<svg class="ic'+(cls?' '+cls:'')+'" viewBox="0 0 24 24" aria-hidden="true">'+(ICONE[n]||'')+'</svg>'; }
 
 /* ---------- armazenamento ---------- */
+/* Cada vistoria tem uma cópia de segurança, "<id>.json.novo", gravada ANTES do arquivo principal e apagada depois:
+   se o app morrer no meio da gravação (a câmera abre e o Android fecha o app), sempre sobra uma cópia inteira. */
+let VIST_ILEGIVEIS=[];
 async function carregarVistorias(){
- const nomes=(await Arquivos.listar('vistorias')).filter(n=>/\.json$/.test(n)); const out=[];
- for(const n of nomes){ try{ const v=JSON.parse(await Arquivos.lerTexto('vistorias/'+n)); if(v && v.id) out.push(v); }catch(e){ console.warn('vistoria ilegível', n, e); } }
- VIST=out;
+ const todos=await Arquivos.listar('vistorias'), nomes=todos.filter(n=>/\.json$/.test(n)), out=[], quebrados=[];
+ const ler=async n=>{ const v=JSON.parse(await Arquivos.lerTexto('vistorias/'+n)); return v && v.id? v : null; };
+ for(const n of nomes){
+  let v=null; try{ v=await ler(n); }catch(e){}
+  if(!v && todos.indexOf(n+'.novo')>=0){ try{ v=await ler(n+'.novo'); if(v) await Arquivos.gravarTexto('vistorias/'+n, JSON.stringify(v)); }catch(e){} }   // o principal ficou pela metade: vale a cópia
+  if(v) out.push(v); else quebrados.push(n);
+ }
+ /* sobrou só a cópia (o app morreu antes de criar o principal) */
+ for(const n of todos.filter(x=>/\.json\.novo$/.test(x) && nomes.indexOf(x.slice(0,-5))<0)){ try{ const v=await ler(n); if(v){ out.push(v); await Arquivos.gravarTexto('vistorias/'+n.slice(0,-5), JSON.stringify(v)); } }catch(e){ quebrados.push(n); } }
+ VIST=out; VIST_ILEGIVEIS=quebrados;
+ if(quebrados.length) setTimeout(()=>aviso(quebrados.length+' vistoria(s) guardada(s) neste aparelho não puderam ser lidas ('+quebrados.join(', ')+'). Não desinstale o app e avise o Julio.', 12000), 1500);
 }
-async function gravarVistoria(v){ v.editadaEm=new Date().toISOString(); await Arquivos.gravarTexto('vistorias/'+v.id+'.json', JSON.stringify(v)); if(!VIST.includes(v)) VIST.push(v); }
+async function gravarVistoria(v){
+ v.editadaEm=new Date().toISOString(); const txt=JSON.stringify(v), cam='vistorias/'+v.id+'.json';
+ await Arquivos.gravarTexto(cam+'.novo', txt); await Arquivos.gravarTexto(cam, txt); await Arquivos.apagar(cam+'.novo');
+ if(!VIST.includes(v)) VIST.push(v);
+}
 let timerGravar=null, vistoriaPendente=null;
 function gravarDepois(v){ vistoriaPendente=v; clearTimeout(timerGravar); timerGravar=setTimeout(gravarAgora, 500); }
 async function gravarAgora(){ clearTimeout(timerGravar); const v=vistoriaPendente; vistoriaPendente=null; if(v){ try{ await gravarVistoria(v); }catch(e){ aviso('Não foi possível salvar: '+(e.message||e)); } } }
@@ -59,7 +74,7 @@ function topo(titulo, opc){ opc=opc||{};
   '<div class="tt"><small>FUNAT • TUBARÃO</small><h1>'+esc(titulo)+'</h1></div>'+(opc.direita||'<button class="bt-ic redondo" data-ir="#config" aria-label="Meus dados">'+ic('pessoa')+'</button>')+'</header>'; }
 function navInferior(ativo){
  const it=(h, n, r)=>'<a href="'+h+'" class="'+(ativo===h?'at':'')+(h==='#camera'?' cam':'')+'"'+(ativo===h?' aria-current="page"':'')+'>'+ic(n)+'<span>'+r+'</span></a>';
- return '<nav class="nav-inf">'+it('#inicio','casa','Início')+it('#vistorias','lista','Vistorias')+it('#camera','camera','Câmera')+(MODO_WEB? '' : it('#documentos','arquivo','Documentos'))+it('#envios','enviar','Envios')+'</nav>'; }
+ return '<nav class="nav-inf">'+it('#inicio','casa','Início')+it('#vistorias','lista','Vistorias')+it('#itinerario','rota','Itinerário')+(MODO_WEB? it('#camera','camera','Câmera') : it('#documentos','arquivo','Documentos'))+it('#envios','enviar','Envios')+'</nav>'; }
 function faixaTeste(){ return '<div class="faixa">'+ic('aparelho')+'<span>'+(MODO_WEB? 'Salvo neste iPhone. Ao concluir, toque em “Exportar e salvar na pasta” e guarde o arquivo na sua pasta VISTORIAS.' : cfg.pasta? 'Salvo neste aparelho. Ao concluir, vai para a pasta “'+esc(cfg.pasta.nome)+'” quando estiver no Wi-Fi da FUNAT.' : 'Salvo neste aparelho. Configure a pasta da FUNAT em Meus dados para enviar.')+'</span></div>'; }
 function tagTipo(t){ const d=TIPOS_DOC[t]||TIPOS_DOC.relatorio; return '<span class="tag t-'+t+'">'+esc(d.curto.toUpperCase())+'</span>'; }
 
@@ -86,16 +101,18 @@ const TELAS = {};
 TELAS.config = function(){
  const nomes=['Dilmar Orige Estevão','Felisberto Oliveira da Silva','Marcelo Cardoso'];
  return topo(cfg.nome? 'Meus dados' : 'Bem-vindo', {voltar:!!cfg.nome, direita:'<span></span>'})+
-  '<main class="pag"><section class="bloco"><h2>Quem usa este aparelho?</h2><p class="ajuda">O nome sai como elaborador nos documentos gerados a partir das vistorias.</p>'+
+  '<main class="pag com-rodape"><section class="bloco"><h2>Quem usa este aparelho?</h2><p class="ajuda">O nome sai como elaborador nos documentos gerados a partir das vistorias.</p>'+
   '<label class="campo"><span>Seu nome completo</span><input id="cfNome" list="cfNomes" autocomplete="name" value="'+esc(cfg.nome||'')+'"></label>'+
   '<datalist id="cfNomes">'+nomes.map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist></section>'+
   (cfg.nome && MODO_WEB? '<section class="bloco"><h2>Pasta da FUNAT</h2><p class="ajuda">Nesta versão para iPhone, a vistoria vai para a pasta pelo app <b>Arquivos</b>: ao concluir, toque em “Exportar e salvar na pasta”.</p><button class="bt claro largo" data-ir="#arquivos-ajuda">'+ic('pasta')+'Como ligar o app Arquivos à pasta da FUNAT</button></section>' : '')+
   (cfg.nome && !MODO_WEB? '<section class="bloco"><h2>Pasta da FUNAT</h2><p class="ajuda">'+(cfg.pasta? 'Envia para: <b>'+esc(cfg.pasta.nome)+'</b> › VISTORIAS' : 'Ainda não configurada.')+'</p><button class="bt claro largo" data-ir="#pasta">'+ic('enviar')+(cfg.pasta?'Alterar acesso ou pasta':'Configurar acesso à pasta')+'</button></section>' : '')+
   (cfg.nome? '<section class="bloco"><h2>Demandas da planilha</h2><p class="ajuda">'+(cfg.planilhaAtiva? 'Ligado'+(DEMANDAS&&DEMANDAS.fiscal?': demandas de <b>'+esc(DEMANDAS.fiscal)+'</b>':'')+'.' : 'Desligado. Com a chave do seu nome, as demandas que o Pedro distribui para você aparecem em “Para vistoriar”.')+'</p><button class="bt claro largo" data-ir="#planilha">'+ic('lista')+(cfg.planilhaAtiva?'Chave e situação':'Ligar com a minha chave')+'</button></section>' : '')+
-  '<section class="bloco"><h2>Sobre esta versão</h2><p class="ajuda">FUNAT Fiscalização '+esc(VERSAO_APP)+(MODO_WEB? '. Versão para iPhone: fotos, posições e anotações ficam neste iPhone até você exportar. Ao concluir, toque em “Exportar e salvar na pasta” e guarde o arquivo na sua pasta VISTORIAS pelo app Arquivos.' : '. Fotos, posições e anotações ficam neste aparelho. Ao concluir uma vistoria, o app a envia para a subpasta VISTORIAS da sua pasta, quando o celular está no Wi-Fi da FUNAT. Ele não grava em nenhum outro lugar da rede.')+'</p></section>'+
+  '<section class="bloco"><h2>Sobre esta versão</h2><p class="ajuda">FUNAT Fiscalização '+esc(VERSAO_APP)+(MODO_WEB? '. Versão para iPhone: fotos, posições e anotações ficam neste iPhone até você exportar. Ao concluir, toque em “Exportar e salvar na pasta” e guarde o arquivo na sua pasta VISTORIAS pelo app Arquivos.' : '. Fotos, posições e anotações ficam neste aparelho. Ao concluir uma vistoria, o app a envia para a subpasta VISTORIAS da sua pasta, quando o celular está no Wi-Fi da FUNAT. Ele não grava em nenhum outro lugar da rede.')+'</p>'+
+  (!MODO_WEB && cfg.nome? '<p class="ajuda">'+(atualizacaoDisponivel()? '<a href="#atualizar"><b>Nova versão '+esc(cfg.atualizacao.versao)+' disponível.</b></a>' : 'Atualizações: o app confere sozinho a pasta '+esc(PASTA_ATUALIZACAO)+' quando está no Wi-Fi da FUNAT'+(cfg.versaoConferidaEm? ' (última conferência '+esc(quandoRelativo(new Date(cfg.versaoConferidaEm).toISOString()))+')' : '')+'.')+(DEMANDAS && DEMANDAS.versaoScript? ' Script da planilha: versão '+esc(DEMANDAS.versaoScript)+'.' : '')+'</p><button class="bt claro largo" id="cfAtualizar">'+ic('baixar')+'Procurar atualização agora</button>' : '')+'</section>'+
   '<div class="rodape-fixo"><button class="bt pri largo" id="cfOk">'+(cfg.nome? 'Salvar' : 'Começar')+'</button></div></main>';
 };
-TELAS.config.ligar = function(){ $('#cfOk').onclick=()=>{ const n=$('#cfNome').value.trim(); if(n.length<3){ aviso('Escreva o seu nome completo.'); $('#cfNome').focus(); return; } cfg.nome=n; gravarCfg(); location.hash='#inicio'; }; };
+TELAS.config.ligar = function(){ const ca=$('#cfAtualizar'); if(ca) ca.onclick=async()=>{ await conferirAtualizacao({forcar:true}); mostrar(true); };
+ $('#cfOk').onclick=()=>{ const n=$('#cfNome').value.trim(); if(n.length<3){ aviso('Escreva o seu nome completo.'); $('#cfNome').focus(); return; } cfg.nome=n; gravarCfg(); location.hash='#inicio'; }; };
 
 /* No início: devolvidos da minha pasta (o que precisa de ação) e um resumo do resto */
 function blocoAtencao(){
@@ -107,9 +124,10 @@ function blocoAtencao(){
 TELAS.inicio = function(){
  const a=ordenadas(VIST.filter(v=>v.status==='a_vistoriar')), e=ordenadas(VIST.filter(v=>v.status==='em_andamento')), c=pendentesEnvio(VIST), dp=demandasParaVistoriar(), limDem=5;
  return topo('Início')+'<main class="pag com-nav"><div class="ola"><div><h2>'+esc(saudacaoCampo())+', '+esc(primeiroNome(cfg.nome))+'</h2><p>'+esc(hojeExtenso())+'</p></div>'+
-  chipEnvio()+'</div>'+
+  chipEnvio()+'</div>'+faixaAtualizacao()+
   (c.length? '<a class="alerta-envio" href="#envios">'+ic('enviar')+'<span><b>'+c.length+' vistoria'+(c.length>1?'s':'')+' concluída'+(c.length>1?'s':'')+'</b> na fila para a pasta da FUNAT</span></a>' : '')+
   (correcoesComConflito().length? '<a class="alerta-envio conflito" href="#envios">'+ic('alerta')+'<span><b>'+correcoesComConflito().length+' correção(ões)</b> encontraram outra versão na pasta: escolha qual vale</span></a>' : '')+
+  (typeof cartaoItinerario==='function'? cartaoItinerario() : '')+
   blocoAtencao()+
   (e.length? '<h2 class="secao">Em andamento <span class="cont">'+e.length+'</span></h2>'+e.map(cartao).join('') : '')+
   '<h2 class="secao">Para vistoriar <span class="cont">'+(a.length+dp.length)+'</span></h2>'+linhaPlanilha()+((a.length||dp.length)? dp.slice(0,limDem).map(cartaoDemanda).join('')+(dp.length>limDem? '<a class="resumo-docs" href="#vistorias">'+ic('lista')+'<span>e mais '+(dp.length-limDem)+' demanda'+(dp.length-limDem>1?'s':'')+' da planilha</span>'+ic('voltar','seta-dir')+'</a>' : '')+a.map(cartao).join('') :
@@ -252,9 +270,27 @@ async function guardarFoto(v, blob, origem, gpsAparelho, quando){
  v.fotos.push(f); return f;
 }
 async function posicaoRapida(){ try{ const p=await Promise.race([Aparelho.posicao(), new Promise((_,r)=>setTimeout(()=>r(new Error('demorou')), 15000))]); return posicaoDe(p.lat, p.lon, p.precisao); }catch(e){ return null; } }
+/* Com pouca memória, o Android fecha o app enquanto a câmera está aberta. Ao reabrir, a foto chega pelo evento
+   "appRestoredResult": ela vai para a vistoria que estava aberta (guardada antes de abrir a câmera). */
+function lembrarCameraAberta(v){ try{ localStorage.setItem('funat-camera-vistoria', JSON.stringify({id:v.id, em:Date.now()})); }catch(e){} }
+function esquecerCameraAberta(){ try{ localStorage.removeItem('funat-camera-vistoria'); }catch(e){} }
+let FOTO_RESTAURADA=null;
+if(NATIVO && P.App) P.App.addListener('appRestoredResult', r=>{ if(r && r.pluginId==='Camera' && r.success && r.data){ FOTO_RESTAURADA=r.data; recuperarFotoDaCamera(); } });
+async function recuperarFotoDaCamera(){
+ if(!FOTO_RESTAURADA || !VIST.length) return;          // as vistorias ainda não foram lidas: iniciar() chama de novo
+ let m=null; try{ m=JSON.parse(localStorage.getItem('funat-camera-vistoria')||'null'); }catch(e){}
+ const d=FOTO_RESTAURADA, v=m && acharVistoria(m.id); FOTO_RESTAURADA=null; esquecerCameraAberta();
+ const origem=d.webPath || (d.path && CAP.convertFileSrc(d.path)); if(!v || !origem) return;
+ try{ const blob=await blobDe(origem); await guardarFoto(v, blob, 'camera', null, new Date()); await gravarVistoria(v); location.hash='#v/'+v.id; mostrar(true);
+  aviso('O Android fechou o app enquanto a câmera estava aberta. A foto foi recuperada e guardada na vistoria '+protocoloTexto(v)+'.', 8000); }
+ catch(e){ aviso('A foto tirada antes de o app fechar não pôde ser recuperada: '+(e.message||e), 8000); }
+}
 async function novaFotoCamera(v){
+ await gravarAgora();                            // o Android pode fechar o app enquanto a câmera está aberta: o que foi digitado não espera os 500 ms
+ lembrarCameraAberta(v);
  const gpsP=posicaoRapida();                     // o GPS começa a procurar enquanto a câmera está aberta
- let blob; try{ blob=await Aparelho.tirarFoto(); }catch(e){ alert('Não foi possível abrir a câmera: '+(e.message||e)); return; }
+ let blob; try{ blob=await Aparelho.tirarFoto(); }catch(e){ esquecerCameraAberta(); alert('Não foi possível abrir a câmera: '+(e.message||e)); return; }
+ esquecerCameraAberta();
  if(!blob) return;
  const quando=new Date(); ocupado('Guardando a foto…');
  try{
@@ -308,6 +344,7 @@ TELAS.pronta.ligar = function(){ if($('#pEnviar')) $('#pEnviar').onclick=()=>env
 
 /* ---------- envios ---------- */
 function chipEnvio(){
+ if(bloqueadoParaEnviar()) return '<a class="chip-sinc conflito" href="#atualizar">'+ic('alerta')+'Atualize o app</a>';
  const n=pendentesEnvio(VIST).length+correcoesNaFila().length, nc=correcoesComConflito().length;
  if(nc) return '<a class="chip-sinc conflito" href="#envios">'+ic('alerta')+nc+' para decidir</a>';
  if(MODO_WEB) return n? '<a class="chip-sinc fila" href="#envios">'+ic('enviar')+n+' para exportar</a>' : '<a class="chip-sinc" href="#envios">'+ic('aparelho')+'Neste iPhone</a>';
@@ -327,7 +364,9 @@ function secaoCorrecoes(){
 TELAS.envios = function(){
  const c=ordenadas(VIST.filter(v=>v.status==='concluida')), fila=pendentesEnvio(VIST);
  return topo('Envios')+'<main class="pag com-nav">'+
-  (MODO_WEB? '<div class="bloco info">'+ic('pasta')+'<div><b>Salvar na pasta da FUNAT</b><p class="ajuda">Em cada vistoria concluída, toque em “Exportar e salvar” e escolha <b>Salvar em Arquivos</b> › sua pasta › <b>VISTORIAS</b>. É preciso estar no Wi-Fi da FUNAT.</p><button class="bt claro largo" data-ir="#arquivos-ajuda">'+ic('lista')+'Como ligar o app Arquivos à pasta</button></div></div>'
+  (MODO_WEB? '<div class="bloco info">'+ic('pasta')+'<div><b>Salvar na pasta da FUNAT</b><p class="ajuda"><span>No Wi-Fi da FUNAT, toque em <b>Salvar '+(fila.length>1? 'as '+fila.length : '')+' na pasta</b> e escolha <b>Salvar em Arquivos</b> › sua pasta › <b>VISTORIAS</b>. Todas vão de uma vez; o iPhone lembra a última pasta usada.</span></p>'+
+    (fila.length? '<button class="bt pri largo alto" id="eLoteWeb">'+ic('enviar')+(fila.length>1? 'Salvar as '+fila.length+' na pasta' : 'Salvar na pasta')+'</button>' : '<p class="ajuda">'+ic('ok')+'<span>Nada falta salvar.</span></p>')+
+    '<button class="bt claro largo" data-ir="#arquivos-ajuda">'+ic('lista')+'Como ligar o app Arquivos à pasta</button></div></div>'
    : cfg.pasta? '<div class="bloco info">'+ic('enviar')+'<div><b>'+esc(cfg.pasta.nome)+' › VISTORIAS</b><p class="ajuda">As vistorias concluídas vão para essa pasta quando o celular está no Wi-Fi da FUNAT. '+(cfg.ultimoEnvio? 'Último envio: '+esc(quandoRelativo(new Date(cfg.ultimoEnvio).toISOString()))+'.' : '')+'</p>'+
     '<button class="bt pri largo" id="eEnviar"'+(fila.length&&!envioRodando?'':' disabled')+'>'+ic('enviar')+(envioRodando? 'Enviando…' : fila.length? 'Enviar '+fila.length+' agora' : 'Nada na fila')+'</button></div></div>'
    : '<div class="bloco info">'+ic('aparelho')+'<div><b>Pasta da FUNAT não configurada</b><p class="ajuda">Configure o acesso para que as vistorias concluídas cheguem ao computador sozinhas.</p><button class="bt pri largo" data-ir="#pasta">Configurar agora</button></div></div>')+
@@ -340,6 +379,7 @@ TELAS.envios = function(){
 TELAS.envios.ligar = function(){
  $$('[data-exportar]').forEach(b=>b.onclick=()=>exportar(acharVistoria(b.dataset.exportar)));
  if($('#eEnviar')) $('#eEnviar').onclick=()=>enviarPendentes({});
+ if($('#eLoteWeb')) $('#eLoteWeb').onclick=()=>exportarLoteWeb(pendentesEnvio(VIST));
 };
 
 /* O caso .json da ferramenta do computador, com as fotos */
@@ -360,31 +400,50 @@ async function exportar(v){
 
 /* Versão web: o arquivo é montado e só então aparece o botão "Salvar em Arquivos" – o Safari exige que o
    Compartilhar nasça de um toque, e montar o .json com as fotos leva alguns segundos. */
-async function exportarWeb(v){
- await gravarAgora(); ocupado('Preparando o arquivo…'); let arq;
- try{ arq=new File([await montarDocumento(v)], nomeArquivoVistoria(v), {type:'application/json'}); }
+/* Versão web (iPhone): uma vistoria ou TODAS as que faltam, de uma vez, no Compartilhar › Salvar em Arquivos › VISTORIAS.
+   Em dois toques: primeiro prepara os arquivos (leva tempo, com as fotos); o Compartilhar abre no segundo toque,
+   porque o Safari só abre o Compartilhar logo depois de um toque do usuário. */
+async function exportarWeb(v){ return exportarLoteWeb([v]); }
+async function exportarLoteWeb(lista){
+ lista=(lista||[]).filter(Boolean); if(!lista.length) return;
+ await gravarAgora(); ocupado(lista.length>1? 'Preparando '+lista.length+' arquivos…' : 'Preparando o arquivo…'); const arqs=[];
+ try{ for(const v of lista) arqs.push(new File([await montarDocumento(v)], nomeArquivoVistoria(v), {type:'application/json'})); }
  catch(e){ ocupado(false); alert('Não foi possível preparar o arquivo: '+(e.message||e)); return; }
  ocupado(false);
- const podeCompartilhar=!!(navigator.canShare && navigator.canShare({files:[arq]}));
- const url=URL.createObjectURL(arq), mb=(arq.size/1048576).toFixed(1).replace('.',',');
+ const arq=arqs[0], varios=arqs.length>1;
+ const podeCompartilhar=!!(navigator.canShare && navigator.canShare({files:arqs}));
+ const url=URL.createObjectURL(arq), mb=(arqs.reduce((t,a)=>t+a.size,0)/1048576).toFixed(1).replace('.',',');
  const fundo=document.createElement('div'); fundo.className='folha-fundo';
  fundo.innerHTML='<div class="folha" role="dialog" aria-label="Salvar na pasta da FUNAT"><h2>Salvar na pasta da FUNAT</h2>'+
-  '<p class="arq">'+ic('arquivo')+esc(arq.name)+' · '+mb+' MB</p>'+
+  (varios? '<p class="arq">'+ic('arquivo')+arqs.length+' vistorias · '+mb+' MB</p><ul class="lista-arq">'+arqs.map(a=>'<li>'+esc(a.name)+'</li>').join('')+'</ul>' : '<p class="arq">'+ic('arquivo')+esc(arq.name)+' · '+mb+' MB</p>')+
   '<ol class="passos"><li>Toque em <b>Salvar em Arquivos</b>.</li><li>Na lista, abra o servidor da FUNAT (<b>192.168.31.34</b>) › funat › FISCALIZAÇÃO › FISCALIZAÇÃO 2026 › <b>sua pasta</b> › <b>VISTORIAS</b>.</li><li>Toque em <b>Salvar</b>.</li></ol>'+
   (podeCompartilhar? '<button class="bt pri largo alto" id="fsComp">'+ic('enviar')+'Salvar em Arquivos…</button>' : '')+
-  '<a class="bt '+(podeCompartilhar?'sec':'pri')+' largo" id="fsBaixar" href="'+url+'" download="'+esc(arq.name)+'">'+ic('arquivo')+'Baixar o arquivo</a>'+
+  (varios? '<button class="bt '+(podeCompartilhar?'sec':'pri')+' largo" id="fsBaixarTodos">'+ic('arquivo')+'Baixar os '+arqs.length+' arquivos</button>'
+   : '<a class="bt '+(podeCompartilhar?'sec':'pri')+' largo" id="fsBaixar" href="'+url+'" download="'+esc(arq.name)+'">'+ic('arquivo')+'Baixar o arquivo</a>')+
   '<button class="bt txt largo" id="fsJa">'+ic('ok')+'Já salvei na pasta</button><button class="bt txt largo" id="fsFechar">Fechar</button>'+
   '<p class="ajuda">Ainda não ligou o app Arquivos à pasta? <a href="#arquivos-ajuda" id="fsAjuda">Veja como</a>.</p></div>';
  document.body.appendChild(fundo);
  const fechar=()=>{ fundo.remove(); setTimeout(()=>URL.revokeObjectURL(url), 60000); };
- const feito=async()=>{ v.precisaEnviar=false; v.exportadaEm=new Date().toISOString(); await gravarVistoria(v); fechar(); mostrar(true); aviso('Marcada como salva na pasta. Confira no computador.', 4000); };
+ const feito=async()=>{ const em=new Date().toISOString(); for(const v of lista){ v.precisaEnviar=false; v.exportadaEm=em; await gravarVistoria(v); } fechar(); mostrar(true);
+  aviso(varios? lista.length+' vistorias marcadas como salvas na pasta. Confira no computador.' : 'Marcada como salva na pasta. Confira no computador.', 4500); };
  const c=fundo.querySelector('#fsComp');
- if(c) c.onclick=()=>{ navigator.share({files:[arq], title:arq.name}).then(feito).catch(e=>{ if(e && e.name!=='AbortError') alert('Não foi possível abrir o Compartilhar: '+(e.message||e)+'\n\nUse "Baixar o arquivo".'); }); };
+ if(c) c.onclick=()=>{ navigator.share({files:arqs, title:varios? arqs.length+' vistorias' : arq.name}).then(feito).catch(e=>{ if(e && e.name!=='AbortError') alert('Não foi possível abrir o Compartilhar: '+(e.message||e)+(varios? '\n\nSalve uma de cada vez, pelo botão de cada vistoria.' : '\n\nUse "Baixar o arquivo".')); }); };
+ const bt=fundo.querySelector('#fsBaixarTodos');
+ if(bt) bt.onclick=()=>arqs.forEach((a,i)=>setTimeout(()=>{ const l=document.createElement('a'); l.href=URL.createObjectURL(a); l.download=a.name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(()=>URL.revokeObjectURL(l.href), 60000); }, i*400));
  fundo.querySelector('#fsJa').onclick=feito;
  fundo.querySelector('#fsFechar').onclick=fechar;
  fundo.querySelector('#fsAjuda').onclick=()=>fechar();
 }
 
+/* Versão web: o site novo já foi baixado (service worker); recarregar põe a versão nova na tela. Nada se perde:
+   as vistorias ficam no aparelho (IndexedDB). */
+function avisoNovaVersaoWeb(){
+ if(document.getElementById('faixaNovaVersao')) return;
+ const d=document.createElement('div'); d.id='faixaNovaVersao'; d.className='faixa-nova-versao'; d.setAttribute('role','status');
+ d.innerHTML='<span>'+ic('baixar')+'<span><b>Nova versão do app</b> pronta. Suas vistorias continuam no aparelho.</span></span><button class="bt pri" id="fnvOk">Atualizar agora</button>';
+ document.body.appendChild(d);
+ d.querySelector('#fnvOk').onclick=async()=>{ await gravarAgora(); location.reload(); };
+}
 /* Passo a passo: ligar o app Arquivos do iPhone à pasta da FUNAT (uma vez por aparelho) */
 TELAS['arquivos-ajuda'] = function(){
  return topo('Pasta no iPhone', {voltar:true, direita:'<span></span>'})+'<main class="pag">'+
@@ -404,27 +463,36 @@ TELAS['arquivos-ajuda'] = function(){
    silencioso: tentativa automática (ao abrir o app, ao voltar para ele, ao concluir) – sem alertas. */
 let envioRodando=false;
 async function enviarPendentes(op){
- op=op||{}; if(envioRodando || !cfg.pasta) return; const fila=pendentesEnvio(VIST);
+ op=op||{}; if(envioRodando || !cfg.pasta) return;
+ if(bloqueadoParaEnviar()){ if(!op.silencioso) aviso(MSG_ATUALIZAR, 6000); return; } const fila=pendentesEnvio(VIST);
  if(!fila.length){ await enviarCorrecoesNaFila(op); return; }
  envioRodando=true; atualizarSemPerderFoco(); let ok=0, erro=null;
  const destino=caminhoSmb(cfg.pasta.caminho, 'VISTORIAS');
+ try{
  for(const v of fila){
   try{
    await gravarAgora();
-   let nome=v.arquivoRemoto? ultimaParte(v.arquivoRemoto) : '';
+   /* Envio que se reconhece: o nome escolhido fica guardado ANTES de ir para a pasta. Se o app morrer ou a rede cair
+      depois da gravação e antes da resposta, a próxima tentativa usa o mesmo nome, e o módulo nativo só grava por cima
+      se o arquivo de lá for deste mesmo caso (mesmo id). Antes, virava "nome (2).json": duas fichas do mesmo caso. */
+   const jaEnviado=!!v.arquivoRemoto;
+   let nome=jaEnviado? ultimaParte(v.arquivoRemoto) : (v.envioNome||'');
    if(!nome){ const base=nomeArquivoVistoria(v); for(let n=1;n<50;n++){ nome=nomeComSufixo(base,n); if(!await Pasta.existe(caminhoSmb(destino, nome))) break; } }
+   if(!jaEnviado && v.envioNome!==nome){ v.envioNome=nome; await gravarVistoria(v); }
    const txt=await montarDocumento(v), local=await arquivoParaEnvio(nome, txt);
-   const r=await Pasta.enviar({origem:local, destinoPasta:destino, nome:nome});
-   await apagarArquivoDeEnvio(nome);
-   v.precisaEnviar=false; v.enviadaEm=new Date().toISOString(); v.arquivoRemoto=r.caminho; v.erroEnvio=''; await gravarVistoria(v); ok++;
+   let r; try{ r=await Pasta.enviar({origem:local, destinoPasta:destino, nome:nome, id:'campo-'+v.id, jaEnviado:jaEnviado, modificado:v.remotoMod? String(v.remotoMod) : ''}); }
+   finally{ await apagarArquivoDeEnvio(nome); }
+   v.precisaEnviar=false; v.enviadaEm=new Date().toISOString(); v.arquivoRemoto=r.caminho; v.remotoMod=r.modificado||0; v.envioNome=''; v.erroEnvio=''; await gravarVistoria(v); ok++;
    cfg.ultimoEnvio=Date.now(); gravarCfg();
   }catch(e){
-   erro=e; const rede=['SEM_REDE','SEM_CONFIG','SENHA'].includes(e.code);
+   erro=e; const rede=e.code==='SEM_REDE';
+   if(e.code==='EXISTE'){ v.envioNome=''; }   // o nome foi ocupado por OUTRO caso: a próxima tentativa escolhe outro
+   /* senha recusada ou cofre ilegível (aparelho restaurado de backup) não é "falta de Wi-Fi": a mensagem aparece no cartão */
    v.erroEnvio=rede? '' : (e.message||String(e)); await gravarVistoria(v);
-   if(rede || e.code==='DESTINO' || e.code==='NAO_ACHOU') break;
+   if(rede || ['SEM_CONFIG','SENHA','DESTINO','NAO_ACHOU'].includes(e.code)) break;
   }
  }
- envioRodando=false; atualizarSemPerderFoco();
+ }finally{ envioRodando=false; atualizarSemPerderFoco(); }
  if(!op.silencioso){
   if(erro) alert((ok? ok+' enviada(s). ' : '')+'Não foi possível enviar: '+(erro.message||erro));
   else aviso(ok+' vistoria'+(ok>1?'s':'')+' enviada'+(ok>1?'s':'')+' para '+cfg.pasta.nome+' › VISTORIAS.', 4500);
@@ -442,7 +510,7 @@ async function enviarCorrecoesNaFila(op){
  if(ok) atualizarDocumentos(cfg.pasta, {silencioso:true});
 }
 /* Redesenha a tela só se o usuário não estiver digitando (o envio roda por trás) */
-function atualizarSemPerderFoco(){ const a=document.activeElement; if(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return; if(['inicio','envios','pronta','documentos','doc','vistorias','planilha','conflito'].includes(rotaAtual().nome)) mostrar(true); }
+function atualizarSemPerderFoco(){ const a=document.activeElement; if(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return; if(['inicio','envios','pronta','documentos','doc','vistorias','planilha','conflito','planejar','itinerario','parada'].includes(rotaAtual().nome)) mostrar(true); }
 
 /* ---------- acesso à pasta ---------- */
 let confPasta=null;
@@ -548,7 +616,8 @@ async function atualizarDocumentos(p, op){
  op=op||{}; if(!p || docsLendo) return; docsLendo=true; docsErro=''; atualizarSemPerderFoco();
  try{
   const cache=await cacheDocs(); const c=cache[p.caminho]||(cache[p.caminho]={lidoEm:0, arquivos:{}});
-  const lista=await Pasta.listarJson(p.caminho, 2), vistos=new Set(), mudou=[];
+  /* EXCLUIDOS\: documentos excluídos nos painéis do computador (lixeira) – não aparecem no app */
+  const lista=(await Pasta.listarJson(p.caminho, 2)).filter(a=>!/(^|[\\/])EXCLU[IÍ]\u0301?DOS[\\/]/i.test(a.caminho)), vistos=new Set(), mudou=[];
   const propria=!cfg.pastaConsulta && cfg.pasta && p.caminho===cfg.pasta.caminho;
   lista.forEach(a=>{ vistos.add(a.caminho); const v=c.arquivos[a.caminho];
    if(!v || v.modificado!==a.modificado || v.tamanho!==a.tamanho || (propria && v.resumo && v.resumo.status==='devolvido' && !v.offline)) mudou.push(a); });
@@ -645,7 +714,7 @@ async function atualizarDemandas(op){
  op=op||{}; if(demLendo || !cfg.planilhaAtiva) return; demLendo=true; demErro=''; atualizarSemPerderFoco();
  try{
   const r=await Planilha.buscar(urlPlanilha(), await Planilha.chave());
-  DEMANDAS={lidoEm:Date.now(), fiscal:r.fiscal, itens:r.demandas||[]};
+  DEMANDAS={lidoEm:Date.now(), fiscal:r.fiscal, itens:r.demandas||[], equipe:r.equipe||null, base:r.base||null, versaoScript:r.versaoScript||''};   /* equipe e base: script V49 */
   await Arquivos.gravarTexto('demandas.json', JSON.stringify(DEMANDAS));
   if(!op.silencioso) aviso('Planilha lida: '+DEMANDAS.itens.length+' demanda'+(DEMANDAS.itens.length===1?'':'s')+' em aberto.');
  }catch(e){ demErro=e.message||String(e); if(!op.silencioso) aviso(demErro, 5000); }
@@ -671,8 +740,9 @@ function cartaoDemanda(d){
 }
 function tipoSugerido(d){ const a=semAcento(d.assunto); return /RUIDO|SOM |SONOR|BARULHO/.test(a)? 'termo_ruido' : 'relatorio_simplificado'; }
 async function iniciarDaDemanda(id){
- const d=((DEMANDAS&&DEMANDAS.itens)||[]).find(x=>idDemanda(x)===id); if(!d) return;
- const ja=vistoriaDe(d); if(ja){ location.hash='#v/'+ja.id; return; }
+ const d=((DEMANDAS&&DEMANDAS.itens)||[]).find(x=>idDemanda(x)===id);
+ if(!d){ aviso('Esta demanda não está mais na sua lista da planilha (redistribuída ou encerrada). Toque em "Ler agora" em Meus dados para conferir.', 7000); return false; }
+ const ja=vistoriaDe(d); if(ja){ location.hash='#v/'+ja.id; return true; }
  const v=vistoriaDaDemanda(d, tipoSugerido(d)); iniciarVistoria(v); await gravarVistoria(v);
  location.hash='#v/'+v.id; aviso('Vistoria iniciada às '+v.horaVistoria+'. Confira o tipo de documento em “Editar dados”.', 4500);
 }
@@ -700,7 +770,7 @@ TELAS.planilha.ligar = function(){
   if(!/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(chave)){ alert('A chave tem 16 letras e números, no formato XXXX-XXXX-XXXX-XXXX.'); return; }
   ocupado('Consultando a planilha…');
   try{ const r=await Planilha.buscar(url, chave); await Planilha.guardarChave(chave); cfg.urlPlanilha=(typeof CONFIG_APP!=='undefined' && CONFIG_APP.urlPlanilha===url)? '' : url; cfg.planilhaAtiva=true; gravarCfg();
-   DEMANDAS={lidoEm:Date.now(), fiscal:r.fiscal, itens:r.demandas||[]}; await Arquivos.gravarTexto('demandas.json', JSON.stringify(DEMANDAS)); ocupado(false);
+   DEMANDAS={lidoEm:Date.now(), fiscal:r.fiscal, itens:r.demandas||[], equipe:r.equipe||null, base:r.base||null, versaoScript:r.versaoScript||''}; await Arquivos.gravarTexto('demandas.json', JSON.stringify(DEMANDAS)); ocupado(false);
    const meu=semAcento(primeiroNome(cfg.nome));
    alert('Chave de '+r.fiscal+': '+DEMANDAS.itens.length+' demanda'+(DEMANDAS.itens.length===1?'':'s')+' em aberto.'+(meu && r.fiscal.indexOf(meu)!==0? '\n\nAtenção: o nome deste aparelho é '+cfg.nome+'. Confira se a chave é a certa.' : ''));
    location.hash='#inicio'; }
@@ -748,7 +818,8 @@ async function carregarCorrecao(id){
  }
  const doc=JSON.parse(copia.texto); if(String(doc.id)!==String(id)) throw new Error('A cópia guardada é de outro documento.');
  const rasc=completarRascunho(RASCS[id] ? JSON.parse(JSON.stringify(RASCS[id])) : rascunhoVazio());
- if(!rasc.arquivo) rasc.arquivo={caminho:copia.caminho, modificado:copia.modificado, lidoEm:copia.lidoEm};
+ if(!rasc.arquivo) rasc.arquivo={caminho:copia.caminho, modificado:copia.modificado, lidoEm:copia.lidoEm,
+  notasVistas:(((doc.revisao||{}).notas)||[]).map(n=>n.id), histN:(((doc.revisao||{}).historico)||[]).length};   // para notar apontamento novo e reencaminhamento sem depender do relógio do celular
  CORR={id:id, doc:doc, rasc:rasc, copia:copia, resumo:docsDe(cfg.pasta).find(x=>x.id===id) || resumoDocumento(doc, copia.caminho.replace(/\\/g,'/'), copia.modificado)};
 }
 let tRasc=null;
@@ -820,6 +891,7 @@ async function encaminharCorrecao(){
 /* Tenta levar uma correção para a pasta. Devolve {ok}, {fila} (sem rede), {conflito} ou {erro}. */
 async function sincronizarCorrecao(id, op){
  op=op||{}; const rasc=RASCS[id]; if(!rasc || !cfg.pasta) return {erro:'sem rascunho'};
+ if(bloqueadoParaEnviar()){ if(op.interativo) aviso(MSG_ATUALIZAR, 6000); return {fila:true}; }
  const base=cfg.pasta.caminho, rede=e=>['SEM_REDE','SEM_CONFIG','SENHA','LOCAL'].includes(e.code);
  try{
   let caminho=rasc.arquivo && rasc.arquivo.caminho, r;
@@ -837,7 +909,7 @@ async function sincronizarCorrecao(id, op){
   const mesmoArquivo=rasc.arquivo && rasc.arquivo.modificado===r.modificado;
   /* escolhas feitas na tela de conflito valem só para a versão da pasta que o auxiliar viu */
   if(rasc.escolhas && !(rasc.escolhasPara && rasc.escolhasPara.modificado===r.modificado)){ delete rasc.escolhas; delete rasc.escolhasPara; }
-  if(m.status==='aprovado' || ((m.conflitos.length || m.reencaminhadoEm) && !rasc.escolhas)){
+  if(m.status==='aprovado' || ((m.conflitos.length || m.reencaminhadoEm || m.novosApontamentos.length || m.apontamentosSumidos.length) && !rasc.escolhas)){
    rasc.conflito={tipo:m.status==='aprovado'? 'aprovado' : 'versoes', caminho:caminho, modificado:r.modificado, mescla:m, em:new Date().toISOString()};
    await gravarRascunho(id, rasc); return {conflito:true};
   }
@@ -865,10 +937,16 @@ TELAS.conflito = function(id){
  const m=C.mescla, autos=Object.keys(m.aplicar.campos).length+Object.keys(m.aplicar.notas).length;
  const valor=(c,v)=>c.tipo==='resolvida'? (v? 'Corrigido / resolvido' : 'Em aberto') : (v===null? '(campo não existe mais)' : (String(v).trim()? esc(v) : '<i>(vazio)</i>'));
  const rot=c=>c.tipo==='campo'? rotuloCampo(d.tipo, c.chave) : (c.tipo==='resposta'? 'Resposta ao apontamento “'+c.rotulo+'”' : 'Situação do apontamento “'+c.rotulo+'”');
- return cab+(m.reencaminhadoEm? '<p class="nota-alerta">'+ic('alerta')+'<span>O documento <b>já foi reencaminhado</b> '+esc(m.reencaminhadoPor? 'por '+m.reencaminhadoPor+' ' : '')+'em '+esc(dataCurta(m.reencaminhadoEm))+' às '+esc(horaCurta(new Date(m.reencaminhadoEm)))+'. Se continuar, ele é reencaminhado de novo com as suas escolhas.</span></p>' : '')+
+ /* campo apagado no computador: a correção do celular não tem onde entrar (não se oferece "No celular") */
+ m.conflitos.forEach(c=>{ if(c.tipo==='campo' && c.pasta===null){ r.escolhas=r.escolhas||{}; r.escolhas[c.tipo+'|'+c.chave]='pasta'; } });
+ const novos=m.novosApontamentos||[], sumidos=m.apontamentosSumidos||[];
+ const avisoNotas=(novos.length? '<p class="nota-alerta">'+ic('alerta')+'<span>O revisor fez <b>'+novos.length+' apontamento'+(novos.length>1?'s':'')+' novo'+(novos.length>1?'s':'')+'</b> depois que você copiou o documento: '+novos.map(n=>'“'+esc(n.rotulo)+(n.texto? ': '+esc(String(n.texto).slice(0,120)) : '')+'”').join('; ')+'. Se encaminhar agora, ele'+(novos.length>1?'s vão':' vai')+' sem resposta. Para responder, descarte o que fez no celular e corrija de novo a partir da versão atual (abra a aba Documentos no Wi-Fi).</span></p>' : '')
+  +(sumidos.length? '<p class="ajuda">'+ic('info')+sumidos.length+' apontamento(s) que você respondeu no celular foram apagados pelo revisor: a sua resposta a ele(s) não vai.</p>' : '');
+ return cab+avisoNotas+(m.reencaminhadoEm? '<p class="nota-alerta">'+ic('alerta')+'<span>O documento <b>já foi reencaminhado</b> '+esc(m.reencaminhadoPor? 'por '+m.reencaminhadoPor+' ' : '')+'em '+esc(dataCurta(m.reencaminhadoEm))+' às '+esc(horaCurta(new Date(m.reencaminhadoEm)))+'. Se continuar, ele é reencaminhado de novo com as suas escolhas.</span></p>' : '')+
   '<p>Enquanto você corrigia no celular, o mesmo documento foi alterado na pasta (no computador). '+(m.conflitos.length? 'Escolha, em cada item, qual versão vale.' : 'Não há campos em choque.')+'</p>'+
   (autos? '<p class="ajuda">'+ic('ok')+autos+' correção(ões) do celular em campos que ninguém mais mexeu entram sem perguntar.</p>' : '')+'</section>'+
   m.conflitos.map((c,i)=>{ const k=c.tipo+'|'+c.chave, esc0=(r.escolhas||{})[k];
+   if(c.tipo==='campo' && c.pasta===null) return '<section class="bloco escolha"><h3>'+esc(rot(c))+'</h3><p class="ajuda">Este campo não existe mais na pasta (foi apagado no computador). A correção do celular não tem onde entrar; se ainda for preciso, refaça no computador.</p><p class="txt">'+valor(c, c.celular)+'</p></section>';
    return '<section class="bloco escolha"><h3>'+esc(rot(c))+'</h3>'+
     '<label class="versao"><input type="radio" name="k'+i+'" value="pasta" data-k="'+esc(k)+'"'+(esc0==='pasta'?' checked':'')+'><span><b>'+ic('arquivo')+'Na pasta (computador)</b><span class="txt">'+valor(c, c.pasta)+'</span></span></label>'+
     '<label class="versao"><input type="radio" name="k'+i+'" value="celular" data-k="'+esc(k)+'"'+(esc0==='celular'?' checked':'')+'><span><b>'+ic('aparelho')+'No celular</b><span class="txt">'+valor(c, c.celular)+'</span></span></label></section>'; }).join('')+
@@ -902,6 +980,79 @@ TELAS.camera.ligar = function(){ $$('[data-cam]').forEach(b=>b.onclick=async()=>
 
 function naoAchou(){ return topo('Não encontrada', {voltar:true})+'<main class="pag"><div class="vazio"><p>Esta vistoria não existe mais neste aparelho.</p><button class="bt pri" data-ir="#inicio">Ir para o início</button></div></main>'; }
 
+/* ======================= atualização do app pela pasta da FUNAT (0.8.0) =======================
+   Na pasta de atualização ficam o .apk e o versao.json (copiado por último). O app confere quando alcança a pasta
+   (ao abrir e ao voltar para ele; no máximo a cada 30 minutos) e avisa. Quem instala é o auxiliar: o Android sempre
+   pede a confirmação. Abaixo da versão mínima, o app continua vistoriando, mas não envia nada para a pasta. */
+const PASTA_ATUALIZACAO=(typeof CONFIG_APP!=='undefined' && CONFIG_APP.pastaAtualizacao) || 'FISCALIZAÇÃO\\APP DE CAMPO';
+const MSG_ATUALIZAR='Este app está desatualizado: atualize para enviar. Você pode continuar vistoriando normalmente.';
+function atualizacaoDisponivel(){ const a=cfg.atualizacao; return a && a.codigo>CODIGO_APP? a : null; }
+/* A trava do "minimo" só vale depois que ESTE aparelho baixou e conferiu (tamanho, SHA-256, assinatura) aquela versão:
+   um versao.json errado (ou de má-fé) na pasta não pode parar o envio de todos os fiscais. */
+function bloqueadoParaEnviar(){ const a=atualizacaoDisponivel(); return !!(a && a.minimo>CODIGO_APP && cfg.apkConferido===a.codigo); }
+let conferindoVersao=false;
+async function conferirAtualizacao(op){
+ op=op||{}; if(MODO_WEB || !cfg.pasta || conferindoVersao) return;
+ if(!op.forcar && Date.now()-(cfg.versaoConferidaEm||0)<30*60e3) return;
+ conferindoVersao=true;
+ try{
+  const r=await Pasta.lerVersao(PASTA_ATUALIZACAO); let v={valida:false};
+  if(r.existe){ try{ v=avaliarVersao(JSON.parse(r.texto), CODIGO_APP); }catch(e){} }
+  cfg.versaoConferidaEm=Date.now();
+  cfg.atualizacao=v.valida? {versao:v.versao, codigo:v.codigo, arquivo:v.arquivo, tamanho:v.tamanho, sha256:v.sha256, minimo:v.minimo, novidades:v.novidades} : null;
+  gravarCfg();
+  if(op.forcar) aviso(atualizacaoDisponivel()? 'Nova versão '+cfg.atualizacao.versao+' disponível.' : r.existe && !v.valida? 'O arquivo versao.json da pasta não está no formato esperado.' : r.existe? 'O app já está na versão mais nova.' : 'Nenhuma versão publicada em '+PASTA_ATUALIZACAO+'.', 4500);
+  atualizarSemPerderFoco();
+ }catch(e){ if(op.forcar) aviso('Não foi possível conferir: '+(e.message||e), 6000); }
+ finally{ conferindoVersao=false; }
+}
+function faixaAtualizacao(){
+ const a=atualizacaoDisponivel(); if(!a) return '';
+ const b=bloqueadoParaEnviar();
+ return '<a class="alerta-envio atualizacao'+(b? ' conflito' : '')+'" href="#atualizar">'+ic(b? 'alerta' : 'baixar')+'<span><b>'+(b? 'Atualize o app para enviar as vistorias.' : 'Nova versão '+esc(a.versao)+' disponível')+'</b> '+
+  (b? 'Você pode continuar vistoriando.' : esc(a.novidades.length? 'Novidades: '+a.novidades.join('; ')+'.' : 'Toque para atualizar.'))+'</span><em class="at-bt">Atualizar</em></a>';
+}
+let ATU={fase:'', lidos:0, total:0, erro:'', permissao:null};
+const mbTxt=x=>(x/1048576).toFixed(1).replace('.',',');
+TELAS.atualizar = function(){
+ const a=atualizacaoDisponivel();
+ if(!a) return topo('Atualizar o app', {voltar:true, direita:'<span></span>'})+'<main class="pag centro"><div class="grande-ok">'+ic('ok')+'</div><h2>O app está atualizado</h2><p class="ajuda">Versão instalada: '+esc(VERSAO_APP)+'. O app confere a pasta da FUNAT sozinho, sempre que alcança a rede.</p><button class="bt claro largo" id="atConferir">'+ic('baixar')+'Conferir agora</button></main>';
+ let corpo;
+ if(ATU.permissao===false) corpo='<h2>Permitir as atualizações</h2><p class="ajuda">Uma vez só: o Android precisa deixar este app instalar a versão nova.</p><ol class="passos"><li>Toque em <b>Abrir configurações</b>.</li><li>Ative <b>Permitir desta fonte</b>.</li><li>Volte para o app (botão Voltar do celular).</li></ol>'+
+  '<button class="bt pri largo alto" id="atPermissao">Abrir configurações</button><button class="bt txt largo" id="atDeNovo">Já ativei</button>';
+ else if(ATU.fase==='baixando') corpo='<div class="at-prog"><p><b>Baixando da pasta da FUNAT…</b></p><div class="at-barra"><i style="width:'+(ATU.total? Math.round(ATU.lidos*100/ATU.total) : 0)+'%"></i></div><p class="ajuda" id="atNum">'+mbTxt(ATU.lidos)+' de '+mbTxt(ATU.total)+' MB</p><p class="ajuda">Não feche o app e fique no Wi-Fi da FUNAT.</p></div>';
+ else if(ATU.fase==='pronto') corpo='<div class="grande-ok">'+ic('ok')+'</div><p><b>Arquivo conferido.</b></p><p class="ajuda"><span>O Android vai pedir para confirmar: toque em <b>Instalar</b> (ou <b>Atualizar</b>). Depois, abra o app de novo.</span></p><button class="bt pri largo alto" id="atInstalar">Instalar a versão '+esc(a.versao)+'</button>';
+ else corpo=(ATU.erro? '<p class="nota-alerta">'+ic('alerta')+'<span>'+esc(ATU.erro)+'</span></p>' : '')+'<button class="bt pri largo alto" id="atBaixar">'+ic('baixar')+'Atualizar agora</button><p class="ajuda">No Wi-Fi da FUNAT. Suas vistorias, fotos e rascunhos continuam no aparelho.</p>';
+ return topo('Atualizar o app', {voltar:true, direita:'<span></span>'})+'<main class="pag"><section class="bloco"><h2>Versão '+esc(a.versao)+'</h2><p class="ajuda">Instalada: '+esc(VERSAO_APP)+' · download de '+mbTxt(a.tamanho)+' MB</p>'+
+  (a.novidades.length? '<ul class="passos">'+a.novidades.map(n=>'<li>'+esc(n)+'</li>').join('')+'</ul>' : '')+(bloqueadoParaEnviar()? '<p class="nota-alerta">'+ic('alerta')+'<span>'+esc(MSG_ATUALIZAR)+'</span></p>' : '')+'</section>'+
+  '<section class="bloco at-corpo">'+corpo+'</section></main>';
+};
+TELAS.atualizar.ligar = function(){
+ const b=$('#atBaixar'); if(b) b.onclick=baixarEInstalar;
+ const i=$('#atInstalar'); if(i) i.onclick=instalarBaixada;
+ const p=$('#atPermissao'); if(p) p.onclick=()=>Pasta.abrirPermissaoInstalar().catch(e=>aviso(e.message||String(e)));
+ const d=$('#atDeNovo'); if(d) d.onclick=async()=>{ ATU.permissao=await Pasta.podeInstalar(); if(ATU.permissao) baixarEInstalar(); else { aviso('Ainda não está permitido. Ative "Permitir desta fonte" e volte.'); } };
+ const c=$('#atConferir'); if(c) c.onclick=async()=>{ await conferirAtualizacao({forcar:true}); mostrar(true); };
+};
+async function baixarEInstalar(){
+ const a=atualizacaoDisponivel(); if(!a || ATU.fase==='baixando') return;
+ await gravarAgora();
+ try{ ATU.permissao=await Pasta.podeInstalar(); }catch(e){ ATU.permissao=true; }
+ if(!ATU.permissao){ mostrar(true); return; }
+ ATU={fase:'baixando', lidos:0, total:a.tamanho, erro:'', permissao:true}; mostrar(true);
+ try{
+  await Pasta.baixarAtualizacao({pasta:PASTA_ATUALIZACAO, arquivo:a.arquivo, tamanho:a.tamanho, sha256:a.sha256}, (l, t)=>{
+   ATU.lidos=l; ATU.total=t||a.tamanho; const bar=$('.at-barra i'), n=$('#atNum');
+   if(bar) bar.style.width=Math.round(ATU.lidos*100/ATU.total)+'%'; if(n) n.textContent=mbTxt(ATU.lidos)+' de '+mbTxt(ATU.total)+' MB'; });
+  cfg.apkConferido=a.codigo; gravarCfg();          // só agora a trava do "minimo" passa a valer (ver bloqueadoParaEnviar)
+  ATU.fase='pronto'; mostrar(true); instalarBaixada();
+ }catch(e){
+  ATU={fase:'', lidos:0, total:0, permissao:true, erro:['SEM_REDE','SEM_CONFIG','SENHA'].includes(e.code)? 'Não alcancei a pasta da FUNAT. Conecte-se ao Wi-Fi da FUNAT e tente de novo.' : (e.message||String(e))};
+  mostrar(true);
+ }
+}
+async function instalarBaixada(){ try{ await Pasta.instalarAtualizacao(); }catch(e){ ATU={fase:'', lidos:0, total:0, permissao:true, erro:e.message||String(e)}; mostrar(true); } }
+
 /* ======================= roteador ======================= */
 function rotaAtual(){ const h=(location.hash||'#inicio').slice(1).split('/'); return {nome:h[0]||'inicio', args:h.slice(1).map(decodeURIComponent)}; }
 let rotaAnterior='';
@@ -918,7 +1069,7 @@ function mostrar(manterRolagem){
 /* ---------- animações (o CSS está no fim de app.css) ----------
    Mais fundo desliza da direita, voltar desliza da esquerda, trocar de aba só esmaece.
    Redesenhar a mesma tela (mostrar(true) depois de gravar ou enviar) não anima nada. */
-const ABAS=['inicio','vistorias','camera','documentos','envios'];
+const ABAS=['inicio','vistorias','camera','itinerario','documentos','envios'];
 let pilhaTelas=[];
 function movimentoDe(chave){
  if(chave===rotaAnterior) return '';
@@ -957,20 +1108,26 @@ function voltar(){
  const t=$('.tela-cheia'); if(t){ t.remove(); return; }
  const r=rotaAtual().nome;
  if(r==='inicio' || (r==='config' && !cfg.nome)){ gravarAgora().then(()=>Aparelho.sair()); return; }
- if(['vistorias','envios','camera','pronta','documentos'].includes(r)){ location.hash='#inicio'; return; }
+ if(['vistorias','envios','camera','pronta','documentos','itinerario'].includes(r)){ location.hash='#inicio'; return; }
  if(history.length>1) history.back(); else location.hash='#inicio';
 }
 window.addEventListener('hashchange', async()=>{ await gravarAgora(); if(CORR && rotaAtual().nome!=='corrigir'){ clearTimeout(tRasc); const c=CORR; CORR=null; gravarRascunho(c.id, c.rasc).catch(()=>{}); } if(rotaAtual().nome!=='pasta') confPasta=null; mostrar(); });
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden) gravarAgora(); });
 Aparelho.aoVoltar(()=>voltar());
-aoVoltarParaOApp(async()=>{ await enviarPendentes({silencioso:true}); if(cfg.planilhaAtiva && DEMANDAS && Date.now()-(DEMANDAS.lidoEm||0)>5*60e3) atualizarDemandas({silencioso:true}); const p=pastaDocs(); if(p && Date.now()-lidoEmDe(p)>5*60e3) atualizarDocumentos(p, {silencioso:true}); });
+aoVoltarParaOApp(async()=>{
+ if(rotaAtual().nome==='atualizar' && ATU.permissao===false){ ATU.permissao=await Pasta.podeInstalar().catch(()=>false); if(ATU.permissao) baixarEInstalar(); }
+ await enviarPendentes({silencioso:true}); conferirAtualizacao(); if(cfg.planilhaAtiva && DEMANDAS && Date.now()-(DEMANDAS.lidoEm||0)>5*60e3) atualizarDemandas({silencioso:true}); const p=pastaDocs(); if(p && Date.now()-lidoEmDe(p)>5*60e3) atualizarDocumentos(p, {silencioso:true}); });
 
 (async function iniciar(){
+ if(document.readyState==='loading') await new Promise(r=>document.addEventListener('DOMContentLoaded', r, {once:true}));   /* itinerario.js vem depois deste arquivo */
  try{ await carregarVistorias(); }catch(e){ console.error(e); }
+ recuperarFotoDaCamera();
+ try{ if(typeof carregarItinerario==='function') await carregarItinerario(); }catch(e){ console.error(e); }
  try{ await carregarRascunhos(); }catch(e){ console.error(e); }
  mostrar();
- await enviarPendentes({silencioso:true});
- await cacheDocs(); await carregarDemandas(); if(['inicio','vistorias'].includes(rotaAtual().nome)) mostrar(true);
+ if(!MODO_WEB && !atualizacaoDisponivel()) Pasta.apagarAtualizacao().catch(()=>{});   /* sobra de uma atualização já instalada */
+ await enviarPendentes({silencioso:true}); conferirAtualizacao();
+ await cacheDocs(); await carregarDemandas(); if(['inicio','vistorias','planejar','itinerario','parada','resumo'].includes(rotaAtual().nome)) mostrar(true);
  if(cfg.planilhaAtiva && Date.now()-(DEMANDAS.lidoEm||0)>5*60e3) atualizarDemandas({silencioso:true});
  if(cfg.pasta && Date.now()-lidoEmDe(cfg.pasta)>5*60e3) atualizarDocumentos(cfg.pasta, {silencioso:true});
 })();

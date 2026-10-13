@@ -254,8 +254,9 @@ function mesclarCorrecoes(pasta, rasc){
   if(temBase && atual===base) { aplicar.campos[cam]=cel; return; }     // sem valor de partida (rascunho antigo): na dúvida, pergunta
   conflitos.push({tipo:'campo', chave:cam, base:base, celular:cel, pasta:atual});
  });
+ const sumidos=[];
  Object.keys(rasc.notas).forEach(id=>{
-  const r=rasc.notas[id], n=N.find(x=>x.id===id); if(!n) return;            // apontamento apagado pelo revisor: não há o que aplicar
+  const r=rasc.notas[id], n=N.find(x=>x.id===id); if(!n){ sumidos.push(id); return; }   // apontamento apagado pelo revisor: não há o que aplicar (avisa)
   const b=rasc.base.notas[id]||{resposta:String(n.resposta||''), resolvida:!!n.resolvida}, saida={};
   if(r.resposta!==undefined){ const cel=String(r.resposta), atual=String(n.resposta||'');
    if(atual!==cel){ if(atual===b.resposta) saida.resposta=cel; else conflitos.push({tipo:'resposta', chave:id, rotulo:n.rotulo||n.campo||'Apontamento', base:b.resposta, celular:cel, pasta:atual}); } }
@@ -265,10 +266,15 @@ function mesclarCorrecoes(pasta, rasc){
   }
   if(Object.keys(saida).length) aplicar.notas[id]=saida;
  });
- const H=(((pasta.revisao||{}).historico)||[]), ult=[...H].reverse().find(h=>String(h.acao||'').indexOf('encaminhado')===0);
- const desde=rasc.arquivo && rasc.arquivo.lidoEm || '';
- return {aplicar:aplicar, conflitos:conflitos, status:((pasta.revisao||{}).status)||'em_elaboracao',
-         reencaminhadoEm:(ult && ult.data && ult.data>desde)? ult.data : '', reencaminhadoPor:(ult && ult.data && ult.data>desde)? (ult.autor||'')+(ult.origem? ' ('+ult.origem+')' : '') : ''};
+ const H=(((pasta.revisao||{}).historico)||[]), A=rasc.arquivo||{};
+ /* reencaminhado depois da cópia: pelo histórico (registros que a cópia não tinha), não pelo relógio do celular;
+    rascunho antigo, sem histN, continua pela data */
+ const ult=Number.isInteger(A.histN)? H.slice(A.histN).reverse().find(h=>String(h.acao||'').indexOf('encaminhado')===0)
+  : (()=>{ const u=[...H].reverse().find(h=>String(h.acao||'').indexOf('encaminhado')===0), desde=A.lidoEm||''; return u && u.data && u.data>desde? u : null; })();
+ /* apontamento que o revisor criou depois da cópia: não está entre os que o auxiliar viu */
+ const novos=Array.isArray(A.notasVistas)? N.filter(n=>n && A.notasVistas.indexOf(n.id)<0 && !n.resolvida).map(n=>({id:n.id, rotulo:n.rotulo||n.campo||'Apontamento', texto:String(n.texto||'')})) : [];
+ return {aplicar:aplicar, conflitos:conflitos, status:((pasta.revisao||{}).status)||'em_elaboracao', novosApontamentos:novos, apontamentosSumidos:sumidos,
+         reencaminhadoEm:(ult && ult.data)? ult.data : '', reencaminhadoPor:(ult && ult.data)? (ult.autor||'')+(ult.origem? ' ('+ult.origem+')' : '') : ''};
 }
 /* Depois que o auxiliar escolheu em cada conflito: escolhas = {"campo|simp.corpo":"celular"|"pasta", "resposta|n1":…} */
 function aplicarEscolhas(mescla, escolhas){
@@ -311,4 +317,15 @@ function conferirReencaminhar(o, rasc){
  return {bloqueia:bloqueia, avisa:avisa};
 }
 
-if(typeof module!=='undefined') module.exports={mesclarCorrecoes, aplicarEscolhas, completarRascunho, parseProtocolo, chaveProtocolo, mesmoProtocolo, idDemanda, fiscalizadaEm, separarEndereco, vistoriaDaDemanda, resumoDocumento, unirDocumentos, grupoDocumento, diasUteisDesde, pendentesEnvio, nomeComSufixo, caminhoSmb, ultimaParte, novaVistoria, iniciarVistoria, posicaoDe, exifDaFoto, alertasFoto, pendenciasConcluir, paraDocumento, nomeArquivoVistoria, protocoloTexto};
+/* ---------- atualização do app (versao.json na pasta da rede) ----------
+   {"versao":"0.8.0 (piloto 6)","codigo":13,"arquivo":"FUNAT Fiscalização 0.8.0.apk","tamanho":10515509,"sha256":"…","minimo":12,"novidades":["…"]}
+   Arquivo estranho vira {valida:false}: o app só avisa de versão nova quando tudo confere. */
+function avaliarVersao(v, codigoAtual){
+ const ok=v && typeof v==='object' && Number.isInteger(v.codigo) && v.codigo>0 && /^[^\\/]+\.apk$/i.test(String(v.arquivo||'')) && String(v.arquivo).indexOf('..')<0
+  && Number.isInteger(v.tamanho) && v.tamanho>0 && /^[0-9a-f]{64}$/i.test(String(v.sha256||''));
+ if(!ok) return {valida:false};
+ const minimo=Number.isInteger(v.minimo)? v.minimo : 0;
+ return {valida:true, versao:String(v.versao||v.codigo).slice(0,40), codigo:v.codigo, arquivo:String(v.arquivo), tamanho:v.tamanho, sha256:String(v.sha256).toLowerCase(), minimo:minimo,
+  novidades:(Array.isArray(v.novidades)? v.novidades : []).map(x=>String(x).slice(0,140)).slice(0,6), nova:v.codigo>codigoAtual, abaixoDoMinimo:codigoAtual<minimo};
+}
+if(typeof module!=='undefined') module.exports={avaliarVersao, mesclarCorrecoes, aplicarEscolhas, completarRascunho, parseProtocolo, chaveProtocolo, mesmoProtocolo, idDemanda, fiscalizadaEm, separarEndereco, vistoriaDaDemanda, resumoDocumento, unirDocumentos, grupoDocumento, diasUteisDesde, pendentesEnvio, nomeComSufixo, caminhoSmb, ultimaParte, novaVistoria, iniciarVistoria, posicaoDe, exifDaFoto, alertasFoto, pendenciasConcluir, paraDocumento, nomeArquivoVistoria, protocoloTexto};
