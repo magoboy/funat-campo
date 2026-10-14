@@ -420,3 +420,20 @@ main[class*="anim-"] .grande-ok{animation:mAcende 260ms var(--m-entra) 80ms back
 .lista-arq{margin:4px 0 10px;padding-left:18px;font-size:13px;color:var(--texto2);max-height:120px;overflow:auto}
 .faixa-nova-versao{position:fixed;left:12px;right:12px;bottom:calc(var(--nav-h) + 12px + env(safe-area-inset-bottom));z-index:60;display:flex;gap:10px;align-items:center;justify-content:space-between;background:var(--azul-esc);color:#fff;border-radius:14px;padding:10px 12px;box-shadow:var(--sombra);font-size:14px}
 .faixa-nova-versao span{display:flex;gap:8px;align-items:center}
+/* retorno ao local (0.9.5): etiqueta da visita, faixa na vistoria, folha de opções */
+.tag.t-visita{background:#7a4f00}
+.bloco.retorno-faixa{border-left:4px solid #7a4f00;background:var(--ambar-claro)}
+.bloco.retorno-faixa p{margin:6px 0}
+.cita-ant{white-space:pre-wrap;margin:6px 0;padding:10px 12px;background:var(--sup);border-radius:10px;font-size:15px}
+.cartao.retorno{border-left:4px solid #7a4f00}
+button.resumo-docs{width:100%;border:0;font:inherit;text-align:left;cursor:pointer}
+.folha-fundo{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center}
+.folha{width:100%;max-width:760px;max-height:88vh;overflow:auto;background:var(--sup);border-radius:22px 22px 0 0;padding:20px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -4px 24px rgba(0,0,0,.25);animation:folha-sobe .22s ease-out}
+.folha h2{display:flex;gap:8px;align-items:center;font-size:19px;margin-bottom:6px}
+.folha .opcoes{display:grid;gap:8px;margin:12px 0 6px}
+.folha .bt.largo{justify-content:flex-start;text-align:left}
+@keyframes folha-sobe{from{transform:translateY(40px);opacity:.6}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.folha{animation:none}}
+/* atualização da versão web (0.9.5) */
+.atu-web{margin-top:10px}
+.atu-web .estado{display:flex;gap:8px;align-items:center;margin:6px 0}

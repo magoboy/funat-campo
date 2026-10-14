@@ -31,7 +31,7 @@ async function cancelarItinerario(){
 }
 /* parada marcada por engano volta a pendente (a minha concluída no app não volta: a vistoria existe) */
 function podeDesfazer(p){ if(p.status==='pendente') return false; if(p.doColega) return true;
- const d=((DEMANDAS && DEMANDAS.itens)||[]).find(x=>idDemanda(x)===p.id), v=d && vistoriaDe(d); return !(v && v.status==='concluida'); }
+ const d=((DEMANDAS && DEMANDAS.itens)||[]).find(x=>idDemanda(x)===p.id), v=d && vistoriaDe(d); return !(v && v.status==='concluida' && v.id!==p.apos); }
 async function desfazerParada(it, i){ const p=it.paradas[i]; if(!p || !podeDesfazer(p)) return; p.status='pendente'; p.motivo=''; p.em=''; await gravarItinerario(); aviso('Parada '+(i+1)+' voltou para pendente.'); mostrar(true); }
 function baseFunat(){
  if(cfg.baseFunat) return Object.assign({nome:'FUNAT', fonte:'gps'}, cfg.baseFunat);
@@ -43,7 +43,13 @@ const nomeFiscal=f=>{ const p=String(f||'').trim().split(/\s+/)[0]||''; return p
 
 /* ---------- as demandas que dá para pôr no itinerário ---------- */
 /* Para visitar: não iniciada ou com diligência em andamento (volta ao local); as minhas já concluídas no app saem */
-function paraVisitar(d, minha){ const s=d.situacao||'nao_iniciada'; if(s!=='nao_iniciada' && s!=='em_andamento') return false; if(minha){ const v=vistoriaDe(d); if(v && v.status==='concluida') return false; } return true; }
+/* Retorno ao local: visita de retorno aberta, ou retorno combinado (voltarEm) para daqui a no máximo 7 dias, entra mesmo com a demanda já fiscalizada */
+function retornoDoPlano(d){ const v=vistoriaDe(d); if(!v) return false;
+ if(v.status!=='concluida') return ehRetorno(v);
+ return !!v.voltarEm && retornosAgendados([v]).length>0 && diasAte(v.voltarEm)<=7; }
+function paraVisitar(d, minha){
+ if(minha && retornoDoPlano(d)) return true;
+ const s=d.situacao||'nao_iniciada'; if(s!=='nao_iniciada' && s!=='em_andamento') return false; if(minha){ const v=vistoriaDe(d); if(v && v.status==='concluida') return false; } return true; }
 function demandasDoPlano(){
  const minhas=((DEMANDAS && DEMANDAS.itens)||[]).filter(d=>paraVisitar(d, true)).map(d=>Object.assign({}, d, {doColega:false}));
  const equipe=((DEMANDAS && DEMANDAS.equipe)||[]).filter(d=>paraVisitar(d, false)).map(d=>Object.assign({}, d, {doColega:true}));
@@ -147,7 +153,11 @@ function colarLink(id){
 
 /* ---------- otimizar: OSRM (ruas) com internet; linha reta sem ---------- */
 async function otimizarRota(op){
- op=op||{}; const {minhas, equipe}=demandasDoPlano(), base=baseFunat();
+ try{ await montarRota(op); }
+ catch(e){ ocupado(false); console.error(e); alert('Não foi possível montar a rota.\n\n'+((e&&e.message)||e)+'\n\nTente de novo; se persistir, avise o Julio com uma foto desta mensagem.'); }
+}
+async function montarRota(op){
+ op=(op && op.manter!==undefined)? op : {}; const {minhas, equipe}=demandasDoPlano(), base=baseFunat();
  const todas=minhas.concat(equipe), velho=itinerarioDeHoje();
  let sel=op.manter && velho? velho.paradas.map(p=>todas.find(d=>idDemanda(d)===p.id) || p.demanda).filter(Boolean) : todas.filter(d=>PLAN.sel && PLAN.sel.has(idDemanda(d)));
  if(!sel.length){ aviso('Escolha ao menos uma demanda.'); return; }
@@ -163,7 +173,8 @@ async function otimizarRota(op){
  ocupado(false);
  const antigo=id=>velho && velho.paradas.find(p=>p.id===id);
  const parada=(d, idx)=>{ const a=antigo(idDemanda(d)); return {id:idDemanda(d), idx:idx, linha:d.linha, protocolo:d.protocolo, assunto:d.assunto||'', endereco:d.endereco||'', fiscal:d.fiscal||meuFiscal(), doColega:!!d.doColega,
-  ponto:pontoDe(d), fixada:!!(a && a.fixada), status:a? a.status : 'pendente', motivo:a? a.motivo : '', em:a? a.em : '', demanda:d}; };
+  ponto:pontoDe(d), fixada:!!(a && a.fixada), status:a? a.status : 'pendente', motivo:a? a.motivo : '', em:a? a.em : '', demanda:d,
+  apos:a? a.apos : (d.doColega? '' : idConcluidaMaisRecente(vistoriasDe(d)))}; };
  ITIN={dia:hojeIso(), criadoEm:(velho && velho.criadoEm)||new Date().toISOString(), comecadoEm:velho && velho.comecadoEm || '', inicio:velho && velho.comecadoEm? velho.inicio : Math.ceil(Math.max(agoraMin(), 7*60+30)/5)*5,
   dupla:{eu:meuFiscal(), parceiro:parceiroHoje()}, base:base, fonte:mat.fonte, mat:{dist:mat.dist.map(l=>l.map(Math.round)), dur:mat.dur.map(l=>l.map(Math.round))}, tracado:tracado,
   paradas:ordem.map(k=>parada(comPonto[k-1], k)).concat(semPonto.map(d=>parada(d, null)))};
@@ -183,7 +194,7 @@ function recalcularTrechos(it){
 function sincronizarStatus(it){
  let mudou=false;
  it.paradas.forEach(p=>{ if(p.doColega) return; const d=((DEMANDAS && DEMANDAS.itens)||[]).find(x=>idDemanda(x)===p.id), v=d && vistoriaDe(d);
-  if(v && v.status==='concluida' && p.status!=='feita'){ p.status='feita'; p.em=v.concluidaEm||new Date().toISOString(); mudou=true; } });
+  if(v && v.status==='concluida' && v.id!==p.apos && p.status!=='feita'){ p.status='feita'; p.em=v.concluidaEm||new Date().toISOString(); mudou=true; } });
  if(mudou) gravarItinerario().catch(()=>{});
 }
 
@@ -265,7 +276,7 @@ TELAS.parada = function(){
    (p.trecho? '<p class="it-dist grande">'+ic('rota')+'a '+esc(kmTxt(p.trecho.dist))+' · '+esc(duracaoTxt(p.trecho.dur))+'</p>' : '')+
    (p.doColega? '<div class="it-trava">'+ic('alerta')+'<div><b>Vistoria do '+esc(nomeFiscal(p.fiscal))+'</b><small>Ele inicia no celular dele. Aqui a parada serve só para seguir a rota.</small></div></div>' : '')+
    '<div class="it-bts">'+(p.doColega? '<button class="bt pri alto" id="paNavegar">'+ic('mapa')+'Navegar até o local</button>' :
-    '<button class="bt claro alto" id="paNavegar">'+ic('mapa')+'Navegar</button>'+(v? '<button class="bt pri alto" data-ir="#v/'+v.id+'">'+ic('lapis')+'Abrir vistoria</button>' : '<button class="bt pri alto" id="paIniciar">'+ic('camera')+'Iniciar vistoria</button>'))+'</div>'+
+    '<button class="bt claro alto" id="paNavegar">'+ic('mapa')+'Navegar</button>'+(v && !(v.status==='concluida' && v.id===p.apos)? '<button class="bt pri alto" data-ir="#v/'+v.id+'">'+ic('lapis')+(ehRetorno(v)? 'Abrir visita' : 'Abrir vistoria')+'</button>' : '<button class="bt pri alto" id="paIniciar">'+ic(v? 'girar' : 'camera')+(v? 'Voltar ao local' : 'Iniciar vistoria')+'</button>'))+'</div>'+
    '<div class="it-bts sec">'+(p.doColega? '<button class="bt sec" id="paFeita">'+ic('ok')+'Feita pelo '+esc(nomeFiscal(p.fiscal))+'</button>' : '')+'<button class="bt sec" id="paNao">'+ic('fechar')+'Não foi possível</button><button class="bt sec" id="paDepois">Pular para depois</button></div></section>'+
   '<section class="bloco"><h2>Todas as paradas</h2><ol class="it-lista">'+it.paradas.map((x,i)=>'<li class="st-'+(x===p? 'agora' : x.status)+'"><span class="it-num">'+(x.status==='feita'? ic('ok') : x.status==='nao_foi'? ic('fechar') : i+1)+'</span><div><b>'+esc(x.protocolo)+' · '+esc(x.assunto)+'</b><small>'+esc(bairroDe(x.endereco)||x.endereco||'')+' ('+esc(nomeFiscal(x.fiscal))+')'+(x.status==='feita' && x.em? ' · concluída às '+esc(horaDe(x.em)) : x.status==='nao_foi'? ' · '+esc(x.motivo) : x===p? ' · agora' : '')+'</small></div>'+(x!==p && podeDesfazer(x)? '<button class="bt txt mini-bt" data-desfazer="'+i+'">Desfazer</button>' : '')+'</li>').join('')+'</ol>'+
    '<p class="it-prog"><span>'+ic('relogio')+'Retorno previsto</span><b>FUNAT às '+horaMin(it.retorno)+'</b></p></section>'+

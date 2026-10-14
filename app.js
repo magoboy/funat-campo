@@ -2,8 +2,8 @@
    Rotas pelo endereço (#inicio, #vistorias, #nova, #v/<id>, #foto/<id>/<n>, #envios, #pronta/<id>, #config).
    Cada vistoria fica em vistorias/<id>.json e as fotos em fotos/<id>/<foto>.jpg, na memória interna do app. */
 
-const VERSAO_APP = '0.9.4 (piloto 9)';
-const CODIGO_APP = 18;              // sobe a cada APK: o Android só instala por cima versão com código maior
+const VERSAO_APP = '0.9.6 (piloto 11)';
+const CODIGO_APP = 20;              // sobe a cada APK: o Android só instala por cima versão com código maior
 let VIST = [];                       // vistorias carregadas
 let cfg = lerCfg();
 
@@ -80,17 +80,18 @@ function tagTipo(t){ const d=TIPOS_DOC[t]||TIPOS_DOC.relatorio; return '<span cl
 
 /* ---------- cartões de vistoria ---------- */
 function rotuloStatus(v){
- if(v.status==='a_vistoriar') return 'Ainda não vistoriada · criada '+quandoRelativo(v.criadaEm);
+ if(v.status==='a_vistoriar') return (ehRetorno(v)? numeroVisita(v)+'ª visita ainda não feita' : 'Ainda não vistoriada')+' · criada '+quandoRelativo(v.criadaEm);
  if(v.status==='em_andamento') return 'Em andamento · '+v.fotos.length+' foto'+(v.fotos.length===1?'':'s')+' · editada '+quandoRelativo(v.editadaEm);
  return v.precisaEnviar? 'Concluída · na fila para a pasta da FUNAT' : v.enviadaEm? 'Concluída · enviada para a pasta '+quandoRelativo(v.enviadaEm) : v.exportadaEm? 'Concluída · arquivo exportado '+quandoRelativo(v.exportadaEm) : 'Concluída';
 }
+function tagVisita(v){ return ehRetorno(v)? '<span class="tag t-visita">'+numeroVisita(v)+'ª VISITA</span>' : ''; }
 function cartao(v){
  const local=[v.bairro, v.endereco].filter(Boolean).join(' · ');
  const acao= v.status==='a_vistoriar'? '<button class="bt pri" data-iniciar="'+v.id+'">'+ic('camera')+'Iniciar vistoria</button>'
           : v.status==='em_andamento'? '<button class="bt pri" data-ir="#v/'+v.id+'">'+ic('lapis')+'Continuar</button>'
-          : '<button class="bt sec" data-ir="#v/'+v.id+'">Abrir</button>';
+          : '<button class="bt sec" data-ir="#v/'+v.id+'">Abrir</button><button class="bt claro" data-retorno-v="'+v.id+'">'+ic('girar')+'Voltar ao local</button>';
  const mapa= v.local? '<button class="bt txt" data-mapa="'+v.id+'">'+ic('mapa')+'Ver no mapa</button>' : '';
- return '<article class="cartao st-'+v.status+'"><div class="c-l1">'+tagTipo(v.tipoDocumento)+'<b>'+esc(protocoloTexto(v))+'</b></div>'+
+ return '<article class="cartao st-'+v.status+'"><div class="c-l1">'+tagTipo(v.tipoDocumento)+tagVisita(v)+'<b>'+esc(protocoloTexto(v))+'</b></div>'+
   (v.assunto? '<h3>'+esc(v.assunto)+'</h3>' : '')+(local? '<p class="loc">'+ic('pino')+esc(local)+'</p>' : '')+
   '<p class="st">'+esc(rotuloStatus(v))+'</p><div class="c-ac">'+acao+mapa+'</div></article>'; }
 function ordenadas(lista){ return lista.slice().sort((a,b)=>String(b.editadaEm).localeCompare(String(a.editadaEm))); }
@@ -107,11 +108,11 @@ TELAS.config = function(){
   (cfg.nome && MODO_WEB? '<section class="bloco"><h2>Pasta da FUNAT</h2><p class="ajuda">Nesta versão para iPhone, a vistoria vai para a pasta pelo app <b>Arquivos</b>: ao concluir, toque em “Exportar e salvar na pasta”.</p><button class="bt claro largo" data-ir="#arquivos-ajuda">'+ic('pasta')+'Como ligar o app Arquivos à pasta da FUNAT</button></section>' : '')+
   (cfg.nome && !MODO_WEB? '<section class="bloco"><h2>Pasta da FUNAT</h2><p class="ajuda">'+(cfg.pasta? 'Envia para: <b>'+esc(cfg.pasta.nome)+'</b> › VISTORIAS' : 'Ainda não configurada.')+'</p><button class="bt claro largo" data-ir="#pasta">'+ic('enviar')+(cfg.pasta?'Alterar acesso ou pasta':'Configurar acesso à pasta')+'</button></section>' : '')+
   (cfg.nome? '<section class="bloco"><h2>Demandas da planilha</h2><p class="ajuda">'+(cfg.planilhaAtiva? 'Ligado'+(DEMANDAS&&DEMANDAS.fiscal?': demandas de <b>'+esc(DEMANDAS.fiscal)+'</b>':'')+'.' : 'Desligado. Com a chave do seu nome, as demandas que o Pedro distribui para você aparecem em “Para vistoriar”.')+'</p><button class="bt claro largo" data-ir="#planilha">'+ic('lista')+(cfg.planilhaAtiva?'Chave e situação':'Ligar com a minha chave')+'</button></section>' : '')+
-  '<section class="bloco"><h2>Sobre esta versão</h2><p class="ajuda">FUNAT Fiscalização '+esc(VERSAO_APP)+(MODO_WEB? '. Versão para iPhone: fotos, posições e anotações ficam neste iPhone até você exportar. Ao concluir, toque em “Exportar e salvar na pasta” e guarde o arquivo na sua pasta VISTORIAS pelo app Arquivos.' : '. Fotos, posições e anotações ficam neste aparelho. Ao concluir uma vistoria, o app a envia para a subpasta VISTORIAS da sua pasta, quando o celular está no Wi-Fi da FUNAT. Ele não grava em nenhum outro lugar da rede.')+'</p>'+
+  blocoAtualizacaoWeb()+'<section class="bloco"><h2>Sobre esta versão</h2><p class="ajuda">FUNAT Fiscalização '+esc(VERSAO_APP)+(MODO_WEB? '. Versão para iPhone: fotos, posições e anotações ficam neste iPhone até você exportar. Ao concluir, toque em “Exportar e salvar na pasta” e guarde o arquivo na sua pasta VISTORIAS pelo app Arquivos.' : '. Fotos, posições e anotações ficam neste aparelho. Ao concluir uma vistoria, o app a envia para a subpasta VISTORIAS da sua pasta, quando o celular está no Wi-Fi da FUNAT. Ele não grava em nenhum outro lugar da rede.')+'</p>'+
   (!MODO_WEB && cfg.nome? '<p class="ajuda">'+(atualizacaoDisponivel()? '<a href="#atualizar"><b>Nova versão '+esc(cfg.atualizacao.versao)+' disponível.</b></a>' : 'Atualizações: o app confere sozinho a pasta '+esc(PASTA_ATUALIZACAO)+' quando está no Wi-Fi da FUNAT'+(cfg.versaoConferidaEm? ' (última conferência '+esc(quandoRelativo(new Date(cfg.versaoConferidaEm).toISOString()))+')' : '')+'.')+(DEMANDAS && DEMANDAS.versaoScript? ' Script da planilha: versão '+esc(DEMANDAS.versaoScript)+'.' : '')+'</p><button class="bt claro largo" id="cfAtualizar">'+ic('baixar')+'Procurar atualização agora</button>' : '')+'</section>'+
   '<div class="rodape-fixo"><button class="bt pri largo" id="cfOk">'+(cfg.nome? 'Salvar' : 'Começar')+'</button></div></main>';
 };
-TELAS.config.ligar = function(){ const ca=$('#cfAtualizar'); if(ca) ca.onclick=async()=>{ await conferirAtualizacao({forcar:true}); mostrar(true); };
+TELAS.config.ligar = function(){ ligarAtualizacaoWeb(); const ca=$('#cfAtualizar'); if(ca) ca.onclick=async()=>{ await conferirAtualizacao({forcar:true}); mostrar(true); };
  $('#cfOk').onclick=()=>{ const n=$('#cfNome').value.trim(); if(n.length<3){ aviso('Escreva o seu nome completo.'); $('#cfNome').focus(); return; } cfg.nome=n; gravarCfg(); location.hash='#inicio'; }; };
 
 /* No início: devolvidos da minha pasta (o que precisa de ação) e um resumo do resto */
@@ -128,7 +129,7 @@ TELAS.inicio = function(){
   (c.length? '<a class="alerta-envio" href="#envios">'+ic('enviar')+'<span><b>'+c.length+' vistoria'+(c.length>1?'s':'')+' concluída'+(c.length>1?'s':'')+'</b> na fila para a pasta da FUNAT</span></a>' : '')+
   (correcoesComConflito().length? '<a class="alerta-envio conflito" href="#envios">'+ic('alerta')+'<span><b>'+correcoesComConflito().length+' correção(ões)</b> encontraram outra versão na pasta: escolha qual vale</span></a>' : '')+
   (typeof cartaoItinerario==='function'? cartaoItinerario() : '')+
-  blocoAtencao()+
+  blocoAtencao()+blocoRetornos()+
   (e.length? '<h2 class="secao">Em andamento <span class="cont">'+e.length+'</span></h2>'+e.map(cartao).join('') : '')+
   '<h2 class="secao">Para vistoriar <span class="cont">'+(a.length+dp.length)+'</span></h2>'+linhaPlanilha()+((a.length||dp.length)? dp.slice(0,limDem).map(cartaoDemanda).join('')+(dp.length>limDem? '<a class="resumo-docs" href="#vistorias">'+ic('lista')+'<span>e mais '+(dp.length-limDem)+' demanda'+(dp.length-limDem>1?'s':'')+' da planilha</span>'+ic('voltar','seta-dir')+'</a>' : '')+a.map(cartao).join('') :
    '<div class="vazio">'+ic('lista')+'<p>Nenhuma vistoria agendada.</p><p class="ajuda">'+(cfg.planilhaAtiva? 'Nenhuma demanda aberta sem vistoria na última leitura da planilha.' : 'Ligue as demandas da planilha em Meus dados, ou toque em “Nova vistoria”.')+'</p></div>')+
@@ -137,16 +138,17 @@ TELAS.inicio = function(){
 
 let abaVist='a_vistoriar', buscaVist='';
 TELAS.vistorias = function(){
+ if(abaVist==='retornos' && !retornosAgendados(VIST).length) abaVist='a_vistoriar';
  const q=buscaVist.trim().toLowerCase();
- const abas=[['a_vistoriar','Para vistoriar'],['em_andamento','Em andamento'],['concluida','Concluídas']].concat(cfg.planilhaAtiva? [['fiscalizadas','Já fiscalizadas']] : []);
+ const abas=[['a_vistoriar','Para vistoriar'],['em_andamento','Em andamento'],['concluida','Concluídas']].concat(cfg.planilhaAtiva? [['fiscalizadas','Já fiscalizadas']] : []).concat(retornosAgendados(VIST).length? [['retornos','Retornos']] : []);
  const casa=d=>!q || [d.protocolo,d.assunto,d.endereco,d.diligencias].join(' ').toLowerCase().includes(q);
  const dems=abaVist==='a_vistoriar'? demandasParaVistoriar().filter(casa) : abaVist==='fiscalizadas'? demandasFiscalizadas().filter(casa) : [];
- const contar=k=>k==='fiscalizadas'? demandasFiscalizadas().length : VIST.filter(v=>v.status===k).length+(k==='a_vistoriar'? demandasParaVistoriar().length : 0);
- const lista=abaVist==='fiscalizadas'? [] : ordenadas(VIST.filter(v=>v.status===abaVist && (!q || [protocoloTexto(v), v.assunto, v.bairro, v.endereco, v.autuado].join(' ').toLowerCase().includes(q))));
+ const contar=k=>k==='retornos'? retornosAgendados(VIST).length : k==='fiscalizadas'? demandasFiscalizadas().length : VIST.filter(v=>v.status===k).length+(k==='a_vistoriar'? demandasParaVistoriar().length : 0);
+ const lista=abaVist==='fiscalizadas'? [] : abaVist==='retornos'? retornosAgendados(VIST).filter(v=>!q || [protocoloTexto(v), v.assunto, v.bairro, v.endereco].join(' ').toLowerCase().includes(q)) : ordenadas(VIST.filter(v=>v.status===abaVist && (!q || [protocoloTexto(v), v.assunto, v.bairro, v.endereco, v.autuado].join(' ').toLowerCase().includes(q))));
  return topo('Vistorias')+'<main class="pag com-nav"><label class="busca">'+ic('busca')+'<input id="vBusca" type="search" placeholder="Buscar protocolo, assunto ou bairro" value="'+esc(buscaVist)+'"></label>'+
   '<div class="abas" role="tablist">'+abas.map(([k,r])=>'<button role="tab" aria-selected="'+(k===abaVist)+'" data-aba="'+k+'">'+r+' <span class="cont">'+contar(k)+'</span></button>').join('')+'</div>'+
   (['a_vistoriar','fiscalizadas'].includes(abaVist)? linhaPlanilha() : '')+(abaVist==='fiscalizadas'? '<p class="ajuda">Demandas ainda abertas na planilha que já têm vistoria: o que falta é o documento.</p>' : '')+
-  '<div id="vLista">'+((lista.length||dems.length)? dems.map(cartaoDemanda).join('')+lista.map(cartao).join('') : '<div class="vazio"><p>Nada aqui'+(q?' com essa busca':'')+'.</p></div>')+'</div>'+
+  '<div id="vLista">'+((lista.length||dems.length)? dems.map(cartaoDemanda).join('')+lista.map(abaVist==='retornos'? cartaoRetorno : cartao).join('') : '<div class="vazio"><p>Nada aqui'+(q?' com essa busca':'')+'.</p></div>')+'</div>'+
   '</main><button class="fab" data-ir="#nova" aria-label="Nova vistoria">'+ic('mais')+'<span class="rot">Nova vistoria</span></button>'+navInferior('#vistorias');
 };
 TELAS.vistorias.ligar = function(){
@@ -184,7 +186,16 @@ TELAS.nova.ligar = function(){
 };
 TELAS.editar = function(id){ const v=acharVistoria(id); if(!v) return naoAchou(); return topo('Dados da vistoria', {voltar:true, direita:'<span></span>'})+'<main class="pag">'+formDados(v)+
  '<div class="rodape-fixo"><button class="bt pri largo" id="eOk">Salvar</button></div></main>'; };
-TELAS.editar.ligar = function(id){ ligarSeg(); $('#eOk').onclick=async()=>{ const v=acharVistoria(id); lerFormDados(v); await gravarVistoria(v); history.back(); }; };
+const assinaturaDados=v=>JSON.stringify([v.tipoDocumento, v.expedienteTipo, v.expedienteNum, v.assunto, v.endereco, v.bairro, v.autuado]);
+/* Vistoria concluída com dados mudados (inclusive o tipo de documento): volta para a fila de envio, para a pasta ficar igual ao aparelho */
+TELAS.editar.ligar = function(id){ ligarSeg(); $('#eOk').onclick=async()=>{
+ const v=acharVistoria(id), antes=assinaturaDados(v); lerFormDados(v);
+ if(v.status==='concluida' && assinaturaDados(v)!==antes){
+  if(v.enviadaEm && !confirm(MODO_WEB? 'Esta vistoria já foi exportada. Salvar as mudanças e exportar de novo? No app Arquivos, escolha “Substituir”.' : 'Esta vistoria já está na pasta da FUNAT. Salvar e enviar de novo, por cima do arquivo de lá?\n\nSe ela já foi aberta e alterada no computador, o app recusa e avisa.')){
+   [v.tipoDocumento, v.expedienteTipo, v.expedienteNum, v.assunto, v.endereco, v.bairro, v.autuado]=JSON.parse(antes); return; }
+  v.precisaEnviar=true; v.erroEnvio='';
+ }
+ await gravarVistoria(v); history.back(); if(v.precisaEnviar && cfg.pasta) enviarPendentes({silencioso:true}); }; };
 
 /* ---------- a vistoria ---------- */
 function blocoLocal(v){
@@ -214,7 +225,7 @@ function blocoRuido(v){
 TELAS.v = function(id){
  const v=acharVistoria(id); if(!v) return naoAchou(); const fim=v.status==='concluida';
  return topo(fim? 'Vistoria concluída' : 'Vistoria em andamento', {voltar:true})+faixaTeste()+'<main class="pag com-rodape">'+
-  '<section class="bloco"><div class="c-l1">'+tagTipo(v.tipoDocumento)+'<span class="pilula">'+(fim?'Concluída':'Salvo no aparelho')+'</span></div>'+
+  faixaRetorno(v)+'<section class="bloco"><div class="c-l1">'+tagTipo(v.tipoDocumento)+tagVisita(v)+'<span class="pilula">'+(fim?'Concluída':'Salvo no aparelho')+'</span></div>'+
   '<h2 class="prot">'+esc(protocoloTexto(v))+'</h2>'+(v.assunto?'<p>'+esc(v.assunto)+'</p>':'')+([v.endereco,v.bairro].filter(Boolean).length? '<p class="loc">'+ic('pino')+esc([v.endereco,v.bairro].filter(Boolean).join(' · '))+'</p>' : '')+
   (v.demanda? '<p class="da-planilha">'+ic('lista')+'<span>Da planilha: '+esc(v.demanda.protocolo)+' · repassada em '+esc(v.demanda.repasse||v.demanda.entrada||'?')+(v.demanda.diligencias? ' · '+esc(v.demanda.diligencias) : '')+'</span></p>' : '')+
   '<button class="bt txt" data-ir="#editar/'+v.id+'">'+ic('lapis')+'Editar dados</button>'+
@@ -225,7 +236,7 @@ TELAS.v = function(id){
   (v.fotos.length? '<div class="minis">'+v.fotos.map((f,i)=>miniFoto(v,f,i)).join('')+'</div><p class="ajuda">Toque numa foto para escrever a legenda, girar ou excluir.</p>' : '')+'</section>'+
   '<section class="bloco"><div class="h-cont"><h2>Anotações de campo</h2><small>voz ou texto</small></div>'+
   '<textarea id="vNotas" rows="6" placeholder="O que foi constatado, quem atendeu, providências…">'+esc(v.anotacoes)+'</textarea>'+
-  '<p class="ajuda">'+ic('mic')+'Para ditar, toque no microfone do teclado. No computador, as anotações aparecem no quadro “Vistoria feita no celular”, para você inserir no documento.</p></section>'+blocoRuido(v)+
+  '<p class="ajuda">'+ic('mic')+'Para ditar, toque no microfone do teclado. No computador, as anotações aparecem no quadro “Vistoria feita no celular”, para você inserir no documento.</p></section>'+blocoRuido(v)+(fim? blocoDocumentoRetorno(v) : '')+
   '<button class="bt txt perigo apagar-v" id="vApagar">'+ic('lixo')+'Excluir esta vistoria do aparelho</button>'+
   '<div class="rodape-fixo duplo">'+(fim? '<button class="bt sec" id="vReabrir">Reabrir</button><button class="bt pri" data-ir="#envios">'+ic('enviar')+'Envio</button>'
    : '<button class="bt sec" id="vSalvar">Salvar rascunho</button><button class="bt pri" id="vConcluir">'+ic('ok')+'Concluir vistoria</button>')+'</div></main>';
@@ -244,7 +255,7 @@ TELAS.v.ligar = function(id){
  $$('[data-m]').forEach(inp=>inp.oninput=()=>{ v.ruido.medicoes[+inp.dataset.m][inp.dataset.k]=inp.value; gravarDepois(v); });
  $$('[data-rm]').forEach(b=>b.onclick=async()=>{ if(!confirm('Remover a medição '+(+b.dataset.rm+1)+'?')) return; v.ruido.medicoes.splice(+b.dataset.rm,1); await gravarVistoria(v); mostrar(true); });
  $('#vMedir').onclick=async()=>{ const m=medicaoCampo(); m.horaIni=horaCurta(); v.ruido.medicoes.push(m); v.ruido.usar=true; await gravarVistoria(v); mostrar(true); };
- $('#vApagar').onclick=()=>apagarVistoria(v);
+ $('#vApagar').onclick=()=>apagarVistoria(v); ligarDocumentoRetorno();
  if($('#vSalvar')) $('#vSalvar').onclick=async()=>{ await gravarAgora(); await gravarVistoria(v); aviso('Rascunho salvo neste aparelho.'); };
  if($('#vConcluir')) $('#vConcluir').onclick=()=>concluir(v);
  if($('#vReabrir')) $('#vReabrir').onclick=async()=>{
@@ -339,8 +350,9 @@ TELAS.pronta = function(id){ const v=acharVistoria(id); if(!v) return naoAchou()
   (MODO_WEB? '<button class="bt pri largo alto" data-exportar="'+v.id+'">'+ic('enviar')+(v.precisaEnviar? 'Exportar e salvar na pasta' : 'Exportar de novo')+'</button>' : '')+
   (v.precisaEnviar && cfg.pasta? '<button class="bt pri largo alto" id="pEnviar">'+ic('enviar')+'Tentar enviar agora</button>' : '')+
   (!cfg.pasta && !MODO_WEB? '<button class="bt pri largo alto" data-ir="#pasta">'+ic('enviar')+'Configurar a pasta</button>' : '')+
+  blocoDocumentoRetorno(v, 'esq')+
   '<button class="bt sec largo" data-ir="#inicio">Voltar ao início</button></main>'; };
-TELAS.pronta.ligar = function(){ if($('#pEnviar')) $('#pEnviar').onclick=()=>enviarPendentes({}); $$('[data-exportar]').forEach(b=>b.onclick=()=>exportar(acharVistoria(b.dataset.exportar))); };
+TELAS.pronta.ligar = function(){ ligarDocumentoRetorno(); if($('#pEnviar')) $('#pEnviar').onclick=()=>enviarPendentes({}); $$('[data-exportar]').forEach(b=>b.onclick=()=>exportar(acharVistoria(b.dataset.exportar))); };
 
 /* ---------- envios ---------- */
 function chipEnvio(){
@@ -437,12 +449,83 @@ async function exportarLoteWeb(lista){
 
 /* Versão web: o site novo já foi baixado (service worker); recarregar põe a versão nova na tela. Nada se perde:
    as vistorias ficam no aparelho (IndexedDB). */
+/* ======================= ATUALIZAÇÃO DA VERSÃO WEB (iPhone) =======================
+   Três caminhos para a mesma coisa (o app instalado trocar de versão sem remover o ícone):
+   1) o service worker confere sw.js ao voltar ao app (index.html) e, quando assume, chama novaVersaoAssumiu();
+   2) conferirVersaoWeb() lê versao.json SEM cache ao abrir, ao voltar e a cada 15 minutos: se a impressão do app no ar for outra,
+      pede a atualização ao service worker. Funciona mesmo que o item 1 trave;
+   3) forcarAtualizacaoWeb(): apaga só o armazenamento do PROGRAMA (cache e service worker) e recarrega do servidor.
+      Vistorias, fotos, chave e configurações ficam (IndexedDB e localStorage não são tocados).
+   Recarregar sozinho só acontece com o app numa tela de lista e sem nada sendo digitado, enviado ou gravado. */
+const BUILD_WEB = (typeof CONFIG_APP!=='undefined' && CONFIG_APP.build) || '';
+const atuWeb = {remota:null, conferidaEm:0, pendente:false, assumiu:false, verificando:false, erro:''};
+const TELAS_SEGURAS = ['inicio','vistorias','envios','documentos','itinerario'];
+function seguroRecarregar(){
+ const a=document.activeElement, campo=a && /INPUT|TEXTAREA|SELECT/.test(a.tagName||'');
+ return TELAS_SEGURAS.includes(rotaAtual().nome) && !vistoriaPendente && !envioRodando && !campo && !$('.folha-fundo') && !$('#ocupado') && !$('.tela-cheia');
+}
+function lembrarAtualizacao(){ try{ localStorage.setItem('funat-atualizado-para', (atuWeb.remota&&atuWeb.remota.versao)||''); }catch(e){} }
+function avisarSeAtualizou(){ try{ const v=localStorage.getItem('funat-atualizado-para'); if(v===null) return; localStorage.removeItem('funat-atualizado-para'); aviso('App atualizado'+(v? ' para a versão '+v : '')+'. Suas vistorias continuam aqui.', 5000); }catch(e){} }
+/* O service worker novo assumiu (a primeira instalação não conta) */
+function novaVersaoAssumiu(tinhaControlador){
+ if(!tinhaControlador) return; atuWeb.assumiu=true; atuWeb.pendente=true;
+ if(seguroRecarregar()){ lembrarAtualizacao(); location.reload(); } else avisoNovaVersaoWeb();
+}
+async function conferirVersaoWeb(op){
+ op=op||{}; if(!MODO_WEB || !BUILD_WEB || atuWeb.verificando) return null;
+ if(!op.forcar && Date.now()-atuWeb.conferidaEm<20e3) return atuWeb.pendente;
+ atuWeb.verificando=true; atuWeb.erro='';
+ try{
+  const r=await fetch('versao.json?t='+Date.now(), {cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status);
+  const j=await r.json(); atuWeb.remota=j; atuWeb.conferidaEm=Date.now();
+  atuWeb.pendente=!!(j.build && j.build!==BUILD_WEB);
+  if(atuWeb.pendente){
+   try{ const reg=window.__swReg || await navigator.serviceWorker.getRegistration(); if(reg) reg.update().catch(()=>{}); }catch(e){}
+   if(op.avisarJa) avisoNovaVersaoWeb();
+   else setTimeout(()=>{ if(atuWeb.pendente && !atuWeb.assumiu) avisoNovaVersaoWeb(); }, 12e3);    /* o service worker não assumiu a tempo: oferece a atualização completa */
+  }
+  return atuWeb.pendente;
+ }catch(e){ atuWeb.erro=(navigator.onLine===false? 'Sem internet agora.' : 'Não foi possível conferir ('+(e.message||e)+').'); return null; }
+ finally{ atuWeb.verificando=false; }
+}
 function avisoNovaVersaoWeb(){
  if(document.getElementById('faixaNovaVersao')) return;
  const d=document.createElement('div'); d.id='faixaNovaVersao'; d.className='faixa-nova-versao'; d.setAttribute('role','status');
- d.innerHTML='<span>'+ic('baixar')+'<span><b>Nova versão do app</b> pronta. Suas vistorias continuam no aparelho.</span></span><button class="bt pri" id="fnvOk">Atualizar agora</button>';
+ d.innerHTML='<span>'+ic('baixar')+'<span><b>Nova versão do app'+(atuWeb.remota&&atuWeb.remota.versao? ' ('+esc(atuWeb.remota.versao)+')' : '')+'</b> pronta. Suas vistorias continuam no aparelho.</span></span><button class="bt pri" id="fnvOk">Atualizar agora</button>';
  document.body.appendChild(d);
- d.querySelector('#fnvOk').onclick=async()=>{ await gravarAgora(); location.reload(); };
+ d.querySelector('#fnvOk').onclick=async()=>{ await gravarAgora(); lembrarAtualizacao(); if(atuWeb.assumiu) location.reload(); else forcarAtualizacaoWeb(); };
+}
+/* Apaga o cache do programa e o service worker, renova o cache do navegador com os arquivos do servidor e recarrega. */
+async function forcarAtualizacaoWeb(){
+ ocupado('Atualizando o app…');
+ try{
+  await gravarAgora();
+  let lista=[]; try{ lista=((await (await fetch('versao.json?t='+Date.now(), {cache:'no-store'})).json()).arquivos)||[]; }catch(e){}
+  const ks=await caches.keys(); await Promise.all(ks.filter(k=>/^funat-campo-/.test(k)).map(k=>caches.delete(k)));
+  const rs=await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r=>r.unregister()));
+  await Promise.all(['./'].concat(lista).map(u=>fetch(u, {cache:'reload'}).catch(()=>{})));
+  lembrarAtualizacao();
+ }catch(e){ console.error(e); }
+ location.replace(location.pathname+'?v='+Date.now());
+}
+function blocoAtualizacaoWeb(){
+ if(!MODO_WEB) return '';
+ const q=atuWeb.conferidaEm? 'Conferido '+quandoRelativo(new Date(atuWeb.conferidaEm).toISOString()) : 'Ainda não conferido nesta abertura';
+ return '<section class="bloco atu-web"><h2>'+ic('baixar')+'Atualização do app</h2><p class="ajuda"><span>Versão em uso: <b>'+esc(VERSAO_APP)+'</b>. O app confere sozinho ao abrir, ao voltar para ele e a cada 15 minutos. '+esc(q)+'.</span></p>'+
+  '<button class="bt claro largo" id="cfVerWeb">'+ic('girar')+'Verificar atualização agora</button>'+
+  '<details class="mais-op"><summary>O app não muda, mesmo com versão nova?</summary><p class="ajuda"><span>“Forçar a atualização” apaga só o programa guardado no iPhone e baixa de novo. <b>As vistorias, as fotos, a chave e os seus dados ficam.</b> Use se a atualização normal não funcionar; é o que evita remover e reinstalar o ícone.</span></p><button class="bt claro largo" id="cfForcarWeb">'+ic('baixar')+'Forçar a atualização</button></details></section>';
+}
+function ligarAtualizacaoWeb(){
+ const b=$('#cfVerWeb'); if(!b) return;
+ b.onclick=async()=>{ b.disabled=true; const n=await conferirVersaoWeb({forcar:true, avisarJa:true}); b.disabled=false;
+  if(n===null) aviso(atuWeb.erro||'Não foi possível conferir agora.', 5000); else if(!n) aviso('Você já está na versão mais nova ('+VERSAO_APP+').', 4500); };
+ $('#cfForcarWeb').onclick=()=>{ if(confirm('Forçar a atualização?\n\nO app baixa tudo de novo e recarrega. As vistorias, as fotos e a chave continuam no iPhone.')) forcarAtualizacaoWeb(); };
+}
+function iniciarAtualizacaoWeb(){
+ if(!MODO_WEB) return; avisarSeAtualizou();
+ setTimeout(()=>conferirVersaoWeb(), 2500);
+ document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) conferirVersaoWeb(); });
+ setInterval(()=>{ if(!document.hidden) conferirVersaoWeb({forcar:true}); }, 15*60e3);
 }
 /* Passo a passo: ligar o app Arquivos do iPhone à pasta da FUNAT (uma vez por aparelho) */
 TELAS['arquivos-ajuda'] = function(){
@@ -720,7 +803,9 @@ async function atualizarDemandas(op){
  }catch(e){ demErro=e.message||String(e); if(!op.silencioso) aviso(demErro, 5000); }
  demLendo=false; atualizarSemPerderFoco();
 }
-function vistoriaDe(d){ const id=idDemanda(d); return VIST.find(v=>v.demanda && v.demanda.id===id)||null; }
+/* Uma demanda pode ter várias visitas (retorno ao local): vistoriaDe devolve a mais recente */
+function vistoriasDe(d){ const id=idDemanda(d); return VIST.filter(v=>v.demanda && v.demanda.id===id).sort(ordemVisitas); }
+function vistoriaDe(d){ return vistoriasDe(d)[0]||null; }
 function documentoDe(d){ if(!cfg.pasta) return null; const k=chaveProtocolo(d.protocolo); return docsDe(cfg.pasta).find(x=>mesmoProtocolo(k, x.protocolo))||null; }
 /* Para vistoriar = abertas, sem "Fiscalizado" na planilha e sem vistoria no app; mais antigas primeiro */
 /* A planilha (script V47+) já diz a situação de cada demanda, pelas mesmas regras dos e-mails semanais */
@@ -732,20 +817,111 @@ function cartaoDemanda(d){
  const e=separarEndereco(d.endereco);
  return '<article class="cartao demanda'+(du>=15?' velha':'')+'"><div class="c-l1"><span class="tag t-planilha">PLANILHA</span><b>'+esc(d.protocolo)+'</b>'+(du!==null? '<span class="idade'+(du>=15?' muito':'')+'">'+(du? 'há '+du+' dia'+(du>1?'s':'')+' úte'+(du>1?'is':'l') : 'hoje')+'</span>' : '')+'</div>'+
   (d.assunto? '<h3>'+esc(d.assunto)+'</h3>' : '')+(d.endereco? '<p class="loc">'+ic('pino')+esc([e.bairro,e.endereco].filter(Boolean).join(' · '))+'</p>' : '')+
-  '<p class="st">'+esc(!naoIniciada(d) && d.situacaoTexto? d.situacaoTexto+(f? ' · fiscalizado em '+dataBrCampo(f) : '') : f? 'Fiscalizado em '+dataBrCampo(f)+' (planilha)' : v? (v.status==='concluida'? 'Vistoria concluída no app' : 'Vistoria em andamento no app') : 'Ainda não vistoriada · repassada em '+(d.repasse||d.entrada||'?'))+'</p>'+
+  '<p class="st">'+esc(!naoIniciada(d) && d.situacaoTexto? d.situacaoTexto+(f? ' · fiscalizado em '+dataBrCampo(f) : '') : f? 'Fiscalizado em '+dataBrCampo(f)+' (planilha)' : v? ((ehRetorno(v)? numeroVisita(v)+'ª visita ' : 'Vistoria ')+(v.status==='concluida'? 'concluída no app' : 'em andamento no app')) : 'Ainda não vistoriada · repassada em '+(d.repasse||d.entrada||'?'))+'</p>'+
   (d.observacoes? '<p class="obs">'+ic('lapis')+esc(d.observacoes)+'</p>' : '')+(d.diligencias && !/^\s*fiscaliz\w*\s*\d/i.test(d.diligencias)? '<p class="obs">'+ic('lista')+esc(d.diligencias)+'</p>' : '')+
   (doc? '<a class="doc-ligado" href="#doc/'+encodeURIComponent(doc.id)+'">'+ic('arquivo')+'<span>Documento: '+esc(situacaoDoc(doc))+'</span></a>' : '')+
-  '<div class="c-ac">'+(v? '<button class="bt pri" data-ir="#v/'+v.id+'">'+ic('lapis')+'Abrir vistoria</button>' : naoIniciada(d)? '<button class="bt pri" data-demanda="'+id+'">'+ic('camera')+'Iniciar vistoria</button>' : '')+
+  '<div class="c-ac">'+(v? '<button class="bt '+(v.status==='concluida'? 'sec' : 'pri')+'" data-ir="#v/'+v.id+'">'+ic('lapis')+(ehRetorno(v)? 'Abrir visita' : 'Abrir vistoria')+'</button>' : naoIniciada(d)? '<button class="bt pri" data-demanda="'+id+'">'+ic('camera')+'Iniciar vistoria</button>' : '')+
+  ((v? v.status==='concluida' : !naoIniciada(d))? '<button class="bt '+(v? 'claro' : 'pri')+'" data-retorno="'+id+'">'+ic('girar')+'Voltar ao local</button>' : '')+
   (d.endereco? '<button class="bt txt" data-mapa-end="'+esc(d.endereco)+'">'+ic('mapa')+'Mapa</button>' : '')+'</div></article>';
 }
 function tipoSugerido(d){ const a=semAcento(d.assunto); return /RUIDO|SOM |SONOR|BARULHO/.test(a)? 'termo_ruido' : 'relatorio_simplificado'; }
 async function iniciarDaDemanda(id){
  const d=((DEMANDAS&&DEMANDAS.itens)||[]).find(x=>idDemanda(x)===id);
  if(!d){ aviso('Esta demanda não está mais na sua lista da planilha (redistribuída ou encerrada). Toque em "Ler agora" em Meus dados para conferir.', 7000); return false; }
- const ja=vistoriaDe(d); if(ja){ location.hash='#v/'+ja.id; return true; }
+ const ja=vistoriaDe(d); if(ja && ja.status!=='concluida'){ location.hash='#v/'+ja.id; return true; }
+ if(ja) return !!(await voltarAoLocal({d:d}));      /* já vistoriada: iniciar de novo é um retorno ao local */
  const v=vistoriaDaDemanda(d, tipoSugerido(d)); iniciarVistoria(v); await gravarVistoria(v);
  location.hash='#v/'+v.id; aviso('Vistoria iniciada às '+v.horaVistoria+'. Confira o tipo de documento em “Editar dados”.', 4500);
 }
+/* ======================= RETORNO AO LOCAL ======================= */
+/* Folha de baixo para cima com opções (data-f); devolve o valor escolhido ou null. O botão voltar do Android também fecha. */
+let fecharFolha=null;
+function folha(html){
+ return new Promise(res=>{
+  const f=document.createElement('div'); f.className='folha-fundo'; f.innerHTML='<div class="folha" role="dialog" aria-modal="true">'+html+'</div>';
+  const tecla=e=>{ if(e.key==='Escape') fim(null); };
+  const fim=valor=>{ if(!f.parentNode) return; f.remove(); fecharFolha=null; document.removeEventListener('keydown', tecla); res(valor); };
+  fecharFolha=fim; document.addEventListener('keydown', tecla);
+  f.addEventListener('click', e=>{ if(e.target===f) return fim(null); const b=e.target.closest('[data-f]'); if(b) fim(b.dataset.f); });
+  document.body.appendChild(f);
+ });
+}
+function escolherMotivoRetorno(n, antes){
+ return folha('<h2>'+ic('girar')+'Voltar ao local · '+n+'ª visita</h2><p class="ajuda">'+esc(antes)+' Por que você vai voltar?</p>'+
+  '<div class="opcoes">'+MOTIVOS_RETORNO.map(m=>'<button class="bt claro largo" data-f="'+m.id+'">'+esc(m.rotulo)+'</button>').join('')+'</div>'+
+  '<button class="bt txt largo" data-f="">Cancelar</button>');
+}
+/* Visitas ligadas à vistoria v: as da mesma demanda da planilha e as encadeadas por retornoDe */
+function visitasLigadas(v){
+ return VIST.filter(x=>x===v || (v.demanda && x.demanda && x.demanda.id===v.demanda.id) || x.retornoDe===v.id || x.id===v.retornoDe).sort(ordemVisitas);
+}
+/* Começa uma nova visita (retorno). Já existindo uma visita aberta, abre essa em vez de criar outra: evita duplicata por toque duplo. */
+async function voltarAoLocal(o){
+ await gravarAgora();
+ let d=o.d||null, lista;
+ if(d) lista=vistoriasDe(d);
+ else { lista=visitasLigadas(o.v); if(o.v.demanda) d=((DEMANDAS&&DEMANDAS.itens)||[]).find(x=>idDemanda(x)===o.v.demanda.id)||null; }
+ const ultima=lista[0]||null;
+ if(ultima && ultima.status!=='concluida'){ aviso((ehRetorno(ultima)? 'Esta demanda já tem uma '+numeroVisita(ultima)+'ª visita aberta.' : 'Esta vistoria ainda está aberta.')+' Abrindo ela.', 4000); location.hash='#v/'+ultima.id; return ultima; }
+ const n=d? proximaVisita(lista, d) : (ultima? numeroVisita(ultima)+1 : 2), fisc=d? fiscalizadaEm(d) : '';
+ const antes=ultima? 'A '+numeroVisita(ultima)+'ª visita foi concluída em '+dataBrCampo(ultima.dataVistoria)+'.' : fisc? 'A planilha registra fiscalização em '+dataBrCampo(fisc)+'.' : 'A planilha já marca esta demanda como fiscalizada.';
+ const motivo=await escolherMotivoRetorno(n, antes); if(!motivo) return null;
+ const v=ultima? novaVisitaDe(ultima, motivo, n) : novaVisitaDaDemanda(d, motivo, n, fisc);
+ iniciarVistoria(v); await gravarVistoria(v);
+ location.hash='#v/'+v.id; aviso(n+'ª visita iniciada às '+v.horaVistoria+'. Confira o tipo de documento quando terminar.', 4500); return v;
+}
+/* Retornos combinados (opcional): aparecem no Início a partir de 7 dias antes da data, e em Vistorias › Retornos */
+function cartaoRetorno(v){
+ const dias=diasAte(v.voltarEm), local=[v.bairro, v.endereco].filter(Boolean).join(' · ');
+ return '<article class="cartao retorno'+(dias<0? ' velha' : '')+'"><div class="c-l1">'+tagTipo(v.tipoDocumento)+'<span class="tag t-visita">RETORNO</span><b>'+esc(protocoloTexto(v))+'</b><span class="idade'+(dias<0? ' muito' : '')+'">'+esc(textoPrazoRetorno(dias))+'</span></div>'+
+  (v.assunto? '<h3>'+esc(v.assunto)+'</h3>' : '')+(local? '<p class="loc">'+ic('pino')+esc(local)+'</p>' : '')+
+  '<p class="st">Voltar em '+esc(dataBrCampo(v.voltarEm))+' · '+numeroVisita(v)+'ª visita em '+esc(dataBrCampo(v.dataVistoria))+'</p>'+
+  '<div class="c-ac"><button class="bt pri" data-retorno-v="'+v.id+'">'+ic('girar')+'Voltar ao local</button><button class="bt txt" data-ir="#v/'+v.id+'">Abrir</button>'+
+  (v.local? '<button class="bt txt" data-mapa="'+v.id+'">'+ic('mapa')+'Mapa</button>' : '')+'<button class="bt txt" data-limpar-retorno="'+v.id+'">Dispensar</button></div></article>';
+}
+function blocoRetornos(){
+ const L=retornosAgendados(VIST).filter(v=>diasAte(v.voltarEm)<=7); if(!L.length) return '';
+ return '<h2 class="secao">Retornos combinados <span class="cont">'+L.length+'</span></h2>'+L.slice(0,4).map(cartaoRetorno).join('')+
+  (L.length>4? '<button class="resumo-docs" data-aba-ir="retornos">'+ic('lista')+'<span>e mais '+(L.length-4)+' retorno'+(L.length-4>1?'s':'')+'</span>'+ic('voltar','seta-dir')+'</button>' : '');
+}
+/* Faixa no alto da vistoria de uma visita de retorno */
+function faixaRetorno(v){
+ if(!ehRetorno(v)) return '';
+ const a=v.anterior||{}, ant=a.id? acharVistoria(a.id) : null, dist=(v.local && a.local)? distanciaM(v.local, a.local) : null;
+ return '<section class="bloco retorno-faixa"><div class="c-l1"><span class="tag t-visita">'+numeroVisita(v)+'ª VISITA</span><b>Retorno ao local</b></div>'+
+  '<p><b>Motivo:</b> '+esc(rotuloMotivo(v.motivoRetorno)||'—')+'</p>'+
+  '<p class="ajuda">'+(a.data? 'Visita anterior em '+esc(dataBrCampo(a.data))+(a.hora? ', às '+esc(a.hora) : '')+(typeof a.fotos==='number'? ' · '+a.fotos+' foto'+(a.fotos===1?'':'s') : '') : 'A visita anterior está só na planilha.')+'</p>'+
+  (a.local? '<p class="ajuda">'+ic('pino')+'Ponto da visita anterior: '+esc(utmTexto(a.local))+(dist!==null? ' · você está a '+esc(distanciaTexto(dist))+' dele' : '')+'</p>' : '')+
+  (a.anotacoes? '<details class="mais-op"><summary>Anotações da visita anterior</summary><p class="cita-ant">'+esc(a.anotacoes)+'</p></details>' : '')+
+  (ant? '<button class="bt claro largo" data-ir="#v/'+ant.id+'">'+ic('galeria')+'Ver a visita anterior (fotos e anotações)</button>' : '')+'</section>';
+}
+/* Troca o tipo de documento depois da vistoria (e, se já foi enviada, manda de novo por cima) */
+async function trocarTipoDocumento(v){
+ const jaFoi= v.status==='concluida' && (v.enviadaEm || v.exportadaEm);
+ const avisoEnvio= !jaFoi? '' : (MODO_WEB? '<p class="nota-alerta">'+ic('alerta')+'O arquivo já foi exportado. Exporte de novo e, no app Arquivos, escolha “Substituir”.</p>' :
+    '<p class="nota-alerta">'+ic('alerta')+'Esta vistoria já está na pasta da FUNAT. O app grava de novo por cima, com o tipo novo. Se ela já foi aberta e alterada no computador, o app recusa e avisa.</p>');
+ const novo=await folha('<h2>'+ic('arquivo')+'Documento desta vistoria</h2><p class="ajuda"><span>Hoje: <b>'+esc(TIPOS_DOC[v.tipoDocumento].rotulo)+'</b>. Escolha o documento que vai ser escrito no computador.</span></p>'+avisoEnvio+
+  '<div class="opcoes">'+Object.keys(TIPOS_DOC).map(k=>'<button class="bt '+(k===v.tipoDocumento? 'pri' : 'claro')+' largo" data-f="'+k+'">'+esc(TIPOS_DOC[k].rotulo)+(k===v.tipoDocumento? ' (atual)' : '')+'</button>').join('')+'</div>'+
+  '<button class="bt txt largo" data-f="">Cancelar</button>');
+ if(!novo || !mudarTipoDocumento(v, novo)) return false;
+ await gravarVistoria(v); mostrar(true); aviso('Documento: '+TIPOS_DOC[novo].rotulo+'.'+(jaFoi? (MODO_WEB? ' Exporte de novo para a pasta.' : cfg.pasta? ' Vai de novo para a pasta.' : '') : ''), 4500);
+ if(v.precisaEnviar && cfg.pasta && !MODO_WEB) enviarPendentes({silencioso:true});
+ return true;
+}
+/* Documento e retorno, na vistoria concluída e na tela de "concluída" */
+function blocoDocumentoRetorno(v, extra){
+ return '<section class="bloco'+(extra? ' '+extra : '')+'"><h2>'+ic('arquivo')+'Documento e retorno</h2>'+
+  '<p class="ajuda"><span>Documento que sai desta vistoria: <b>'+esc(TIPOS_DOC[v.tipoDocumento].rotulo)+'</b>.</span></p>'+
+  '<button class="bt claro largo" data-trocar-tipo="'+v.id+'">'+ic('lapis')+'Trocar o tipo de documento</button>'+
+  '<button class="bt claro largo" data-retorno-v="'+v.id+'">'+ic('girar')+'Voltar ao local (nova visita)</button>'+
+  '<label class="campo"><span>Voltar ao local em <em>(opcional)</em></span><input type="date" data-voltar-em="'+v.id+'" value="'+esc(v.voltarEm||'')+'"></label>'+
+  '<p class="ajuda">Se combinou um prazo (por exemplo, o fim da notificação), o app lembra no Início. Não é obrigatório.</p></section>';
+}
+function ligarDocumentoRetorno(){
+ $$('[data-trocar-tipo]').forEach(b=>b.onclick=()=>trocarTipoDocumento(acharVistoria(b.dataset.trocarTipo)));
+ $$('[data-voltar-em]').forEach(i=>i.onchange=async()=>{ const v=acharVistoria(i.dataset.voltarEm); v.voltarEm=i.value||''; await gravarVistoria(v); aviso(v.voltarEm? 'Retorno combinado para '+dataBrCampo(v.voltarEm)+'.' : 'Retorno dispensado.'); });
+}
+
 function linhaPlanilha(){ if(!cfg.planilhaAtiva) return ''; const l=DEMANDAS&&DEMANDAS.lidoEm;
  return '<p class="lida-em">'+(demLendo? '<span class="giro"></span>Lendo a planilha…' : (l? 'Planilha lida '+esc(quandoRelativo(new Date(l).toISOString())) : 'Planilha ainda não lida'))+(demErro? ' · <span class="ruim">'+esc(demErro)+'</span>' : '')+
   (!demLendo? ' <button class="bt txt mini-bt" data-ler-planilha>'+ic('girar')+'Ler agora</button>' : '')+'</p>'; }
@@ -1096,15 +1272,20 @@ window.addEventListener('scroll', ()=>{ const y=window.scrollY, f=$('.fab'); if(
  if(y>ultimoY+6 && y>120) document.body.classList.add('fab-recolhido'); else if(y<ultimoY-6) document.body.classList.remove('fab-recolhido');
  ultimoY=y; }, {passive:true});
 document.addEventListener('click', e=>{
+ const ai=e.target.closest('[data-aba-ir]'); if(ai){ abaVist=ai.dataset.abaIr; location.hash='#vistorias'; mostrar(); return; }
  const ir=e.target.closest('[data-ir]'); if(ir){ e.preventDefault(); location.hash=ir.dataset.ir; return; }
  if(e.target.closest('[data-voltar]')){ e.preventDefault(); voltar(); return; }
  const ini=e.target.closest('[data-iniciar]'); if(ini){ const v=acharVistoria(ini.dataset.iniciar); iniciarVistoria(v); gravarVistoria(v).then(()=>{ location.hash='#v/'+v.id; }); return; }
  const dm=e.target.closest('[data-demanda]'); if(dm){ iniciarDaDemanda(decodeURIComponent(dm.dataset.demanda)); return; }
+ const rd=e.target.closest('[data-retorno]'); if(rd){ const dd=((DEMANDAS&&DEMANDAS.itens)||[]).find(x=>idDemanda(x)===decodeURIComponent(rd.dataset.retorno)); if(dd) voltarAoLocal({d:dd}); else aviso('Esta demanda não está mais na sua lista da planilha.', 5000); return; }
+ const rv=e.target.closest('[data-retorno-v]'); if(rv){ const vv=acharVistoria(rv.dataset.retornoV); if(vv) voltarAoLocal({v:vv}); return; }
+ const lr=e.target.closest('[data-limpar-retorno]'); if(lr){ const vv=acharVistoria(lr.dataset.limparRetorno); if(vv && confirm('Dispensar o retorno combinado para '+(vv.voltarEm? dataBrCampo(vv.voltarEm) : 'esta vistoria')+'?')){ vv.voltarEm=''; gravarVistoria(vv).then(()=>mostrar(true)); } return; }
  if(e.target.closest('[data-ler-planilha]')){ atualizarDemandas({}); return; }
  const me=e.target.closest('[data-mapa-end]'); if(me){ Aparelho.abrirEndereco(me.dataset.mapaEnd+', Tubarão - SC'); return; }
  const mp=e.target.closest('[data-mapa]'); if(mp){ const v=acharVistoria(mp.dataset.mapa); if(v&&v.local) Aparelho.abrirMapa(v.local.lat, v.local.lon, protocoloTexto(v)); }
 });
 function voltar(){
+ if(fecharFolha){ fecharFolha(null); return; }
  const t=$('.tela-cheia'); if(t){ t.remove(); return; }
  const r=rotaAtual().nome;
  if(r==='inicio' || (r==='config' && !cfg.nome)){ gravarAgora().then(()=>Aparelho.sair()); return; }
@@ -1124,7 +1305,7 @@ aoVoltarParaOApp(async()=>{
  recuperarFotoDaCamera();
  try{ if(typeof carregarItinerario==='function') await carregarItinerario(); }catch(e){ console.error(e); }
  try{ await carregarRascunhos(); }catch(e){ console.error(e); }
- mostrar();
+ mostrar(); iniciarAtualizacaoWeb();
  if(!MODO_WEB && !atualizacaoDisponivel()) Pasta.apagarAtualizacao().catch(()=>{});   /* sobra de uma atualização já instalada */
  await enviarPendentes({silencioso:true}); conferirAtualizacao();
  await cacheDocs(); await carregarDemandas(); if(['inicio','vistorias','planejar','itinerario','parada','resumo'].includes(rotaAtual().nome)) mostrar(true);

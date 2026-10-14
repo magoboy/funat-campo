@@ -34,7 +34,9 @@ function novaVistoria(o){
   anotacoes:'',
   ruido:{usar:o.tipoDocumento==='termo_ruido', meteorologia:'', medicoes:[]},
   concluidaEm:'', exportadaEm:'',
-  precisaEnviar:false, enviadaEm:'', arquivoRemoto:'', erroEnvio:''   // envio para a pasta da FUNAT
+  precisaEnviar:false, enviadaEm:'', arquivoRemoto:'', erroEnvio:'',  // envio para a pasta da FUNAT
+  visita:1, retornoDe:'', motivoRetorno:'', anterior:null,           // retorno ao local: 2ª visita em diante (as antigas valem como visita 1)
+  voltarEm:''                                                         // data combinada para voltar (opcional, só lembrete no aparelho)
  };
 }
 function medicaoCampo(){ return {local:'', horaIni:'', horaFim:'', leq:'', maximo:'', minimo:'', observacao:''}; }
@@ -107,6 +109,9 @@ function paraDocumento(v, fotosB64, elaborador){
           revisao:{status:'em_elaboracao', notas:[], historico:[{acao:'vistoria feita no app de campo', autor:elaborador||'', papel:'elaborador', data:v.concluidaEm||new Date().toISOString()}], edicoes:[]},
           vistoriaCampo:{idCampo:v.id, protocolo:protocoloTexto(v), assunto:v.assunto, bairro:v.bairro, endereco:v.endereco,
                          hora:v.horaVistoria, local:v.local, anotacoes:v.anotacoes, concluidaEm:v.concluidaEm, demanda:v.demanda||null}};
+ if(ehRetorno(v)) s.vistoriaCampo.retorno={visita:numeroVisita(v), motivo:v.motivoRetorno||'', motivoTexto:rotuloMotivo(v.motivoRetorno), anteriorId:v.retornoDe||'',
+                                           anteriorData:(v.anterior&&v.anterior.data)||'', anteriorFotos:v.anterior? v.anterior.fotos : null};
+ if(v.voltarEm) s.vistoriaCampo.voltarEm=v.voltarEm;
  if(v.tipoDocumento==='relatorio'){
   s.rel={numero:'', datasVistoria:datas, dataVistoria:datas[0], endereco:[v.endereco, v.bairro].filter(Boolean).join(', '),
          local:[v.endereco, v.bairro].filter(Boolean).join(', '), coord:v.local? GEO.fmtUTM(v.local.e)+' E; '+GEO.fmtUTM(v.local.n)+' S' : '',
@@ -138,12 +143,12 @@ function nomeComSufixo(nome, n){ return n<2? nome : nome.replace(/\.json$/i,'')+
 function caminhoSmb(){ return Array.from(arguments).filter(Boolean).join('\\').replace(/\//g,'\\').replace(/\\{2,}/g,'\\').replace(/^\\|\\$/g,''); }
 function ultimaParte(c){ const p=String(c||'').split('\\'); return p[p.length-1]||''; }
 
-/* Nome do arquivo exportado: "Atend. 1399-2026 - vistoria 07-10-2026.json" */
+/* Nome do arquivo exportado: "Atend. 1399-2026 - vistoria 07-10-2026.json" (retorno: "… - visita 2 20-10-2026.json") */
 function nomeArquivoVistoria(v){
  const abrev={Atendimento:'Atend.', Memorando:'Memo.', 'Ofício':'Of.', Protocolo:'Prot.', Processo:'Proc.'}[v.expedienteTipo]||v.expedienteTipo;
  const num=String(v.expedienteNum||'').replace(/[\/\\]/g,'-').replace(/[^\w\-.]+/g,'').replace(/\./g,'');
  const d=dataBrCampo(v.dataVistoria).replace(/\//g,'-');
- return (num? abrev+' '+num : 'Sem protocolo')+' - vistoria'+(d?' '+d:'')+'.json';
+ return (num? abrev+' '+num : 'Sem protocolo')+' - '+(ehRetorno(v)? 'visita '+numeroVisita(v) : 'vistoria')+(d?' '+d:'')+'.json';
 }
 
 /* Saudação e datas por extenso para a tela inicial */
@@ -191,6 +196,64 @@ function ultimoAtoDoc(d, acao){ for(let i=d.historico.length-1;i>=0;i--) if(d.hi
 /* Dias úteis (seg–sex) desde a data; feriados não entram nesta conta simples */
 function diasUteisDesde(iso, agora){ if(!iso) return null; let d=new Date(iso), n=0; agora=agora||new Date(); d.setHours(0,0,0,0); const fim=new Date(agora); fim.setHours(0,0,0,0);
  while(d<fim){ d.setDate(d.getDate()+1); const w=d.getDay(); if(w!==0 && w!==6) n++; } return n; }
+
+/* ===== Retorno ao local (2ª visita em diante) =====
+   Cada visita é uma vistoria própria (id, fotos, anotações e arquivo na pasta); o que as liga é demanda.id (planilha)
+   ou retornoDe (id da visita anterior). O resultado de uma visita de retorno é um documento NOVO. */
+const MOTIVOS_RETORNO = [
+ {id:'cumprimento',  rotulo:'Verificar o cumprimento da notificação'},
+ {id:'embargo',      rotulo:'Verificar o embargo'},
+ {id:'complementar', rotulo:'Complementar fotos ou medição'},
+ {id:'revisor',      rotulo:'Pedido do revisor'},
+ {id:'ocorrencia',   rotulo:'Nova ocorrência no local'},
+ {id:'outro',        rotulo:'Outro motivo'}
+];
+function rotuloMotivo(id){ const m=MOTIVOS_RETORNO.find(x=>x.id===id); return m? m.rotulo : ''; }
+function numeroVisita(v){ return (v && v.visita>1)? Math.floor(v.visita) : 1; }
+function ehRetorno(v){ return numeroVisita(v)>1; }
+/* Quantas vezes a planilha já registrou "Fiscalizado dd/mm/aaaa" na coluna de diligências */
+function fiscalizacoesNaPlanilha(d){ const re=/fiscaliz\w*\s*(?:em\s*)?(\d{1,2}\/\d{1,2}\/\d{4})/gi, t=String((d&&d.diligencias)||''); let n=0; while(re.exec(t)) n++; return n; }
+/* Retorno a partir de uma vistoria que existe no aparelho: herda protocolo, endereço e autuado; o tipo padrão é o Relato simplificado */
+function novaVisitaDe(ant, motivo, visita){
+ const v=novaVistoria({tipoDocumento:'relatorio_simplificado', expedienteTipo:ant.expedienteTipo, expedienteNum:ant.expedienteNum, assunto:ant.assunto,
+                       bairro:ant.bairro, endereco:ant.endereco, autuado:ant.autuado});
+ v.demanda=ant.demanda? Object.assign({}, ant.demanda) : null;
+ v.visita=visita || numeroVisita(ant)+1; v.retornoDe=ant.id; v.motivoRetorno=MOTIVOS_RETORNO.some(m=>m.id===motivo)? motivo : 'outro';
+ v.anterior={id:ant.id, visita:numeroVisita(ant), data:ant.dataVistoria||'', hora:ant.horaVistoria||'', fotos:(ant.fotos||[]).length,
+             anotacoes:String(ant.anotacoes||'').slice(0,400), local:ant.local||null, tipoDocumento:ant.tipoDocumento};
+ return v;
+}
+/* Retorno a uma demanda da planilha que já foi fiscalizada fora do app (só se sabe a data pelas diligências) */
+function novaVisitaDaDemanda(d, motivo, visita, dataAnterior){
+ const v=vistoriaDaDemanda(d, 'relatorio_simplificado');
+ v.visita=visita||2; v.motivoRetorno=MOTIVOS_RETORNO.some(m=>m.id===motivo)? motivo : 'outro';
+ v.anterior={id:'', visita:v.visita-1, data:dataAnterior||'', hora:'', fotos:null, anotacoes:'', local:null, tipoDocumento:''};
+ return v;
+}
+/* Número da próxima visita de uma demanda: a maior entre as do app e as da planilha, mais uma */
+function proximaVisita(vistoriasDaDemanda, d){ return Math.max(1, fiscalizacoesNaPlanilha(d), vistoriasDaDemanda.reduce((m,x)=>Math.max(m, numeroVisita(x)), 0))+1; }
+/* A mais recente primeiro: é a que "Abrir vistoria" mostra */
+function ordemVisitas(a,b){ return numeroVisita(b)-numeroVisita(a) || String(b.criadaEm).localeCompare(String(a.criadaEm)); }
+/* Id da visita concluída mais recente de uma lista já ordenada (ordemVisitas); '' se a mais recente não está concluída ou não há nenhuma.
+   O itinerário o guarda na parada ("apos"): a parada só fica "feita" por uma visita posterior a essa. */
+function idConcluidaMaisRecente(lista){ const v=lista && lista[0]; return v && v.status==='concluida'? v.id : ''; }
+/* Retornos combinados (voltarEm) de visitas concluídas que ainda não tiveram a visita seguinte */
+function retornosAgendados(lista){
+ const temSeguinte=v=>lista.some(x=>x!==v && x.retornoDe===v.id) || lista.some(x=>x!==v && v.demanda && x.demanda && x.demanda.id===v.demanda.id && numeroVisita(x)>numeroVisita(v));
+ return lista.filter(v=>v.status==='concluida' && /^\d{4}-\d{2}-\d{2}$/.test(v.voltarEm||'') && !temSeguinte(v)).sort((a,b)=>a.voltarEm.localeCompare(b.voltarEm));
+}
+/* Dias (de calendário) de hoje até a data: negativo = já passou */
+function diasAte(iso, hoje){ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||''); if(!m) return null; const h=hoje||new Date();
+ return Math.round((Date.UTC(+m[1], +m[2]-1, +m[3])-Date.UTC(h.getFullYear(), h.getMonth(), h.getDate()))/864e5); }
+function textoPrazoRetorno(dias){ if(dias===null) return ''; if(dias<0) return 'venceu há '+(-dias)+' dia'+(dias<-1?'s':''); if(dias===0) return 'é hoje'; if(dias===1) return 'é amanhã'; return 'em '+dias+' dias'; }
+/* Troca o tipo de documento depois da vistoria. Concluída: volta para a fila de envio (o arquivo da pasta é regravado,
+   e o módulo nativo recusa se alguém já mexeu nele). Devolve false se nada mudou. */
+function mudarTipoDocumento(v, tipo){
+ if(!TIPOS_DOC[tipo] || v.tipoDocumento===tipo) return false;
+ v.tipoDocumento=tipo; if(tipo==='termo_ruido') v.ruido.usar=true;
+ if(v.status==='concluida'){ v.precisaEnviar=true; v.erroEnvio=''; }
+ return true;
+}
 
 /* ===== Demandas da planilha (fase 1: só leitura) ===== */
 /* "Atendimento 1.234/2026", "mem 17755/2024", "Protocolo 14.215/2025", "524/2025" → {tipo, num, chave} */

@@ -28,7 +28,7 @@
 <script src="app.js"></script>
 <script src="itinerario.js"></script>
 <script>if('serviceWorker' in navigator){ var tinha=!!navigator.serviceWorker.controller;
- navigator.serviceWorker.register('sw.js').then(function(r){ document.addEventListener('visibilitychange', function(){ if(!document.hidden) r.update().catch(function(){}); }); }).catch(function(){});
- navigator.serviceWorker.addEventListener('controllerchange', function(){ if(tinha && typeof avisoNovaVersaoWeb==='function') avisoNovaVersaoWeb(); }); }</script>
+ navigator.serviceWorker.register('sw.js').then(function(r){ window.__swReg=r; document.addEventListener('visibilitychange', function(){ if(!document.hidden) r.update().catch(function(){}); }); }).catch(function(){});
+ navigator.serviceWorker.addEventListener('controllerchange', function(){ if(typeof novaVersaoAssumiu==='function') novaVersaoAssumiu(tinha); tinha=true; }); }</script>
 </body>
 </html>
