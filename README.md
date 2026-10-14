@@ -32,10 +32,11 @@ O APK do Android de cada versão está em **[Releases](https://github.com/magobo
 Este repositório tem **só o site gerado**: nenhum dado, foto, senha ou chave. As vistorias ficam apenas em cada aparelho até serem salvas na pasta da FUNAT. O site não usa analytics nem cookies de terceiros. O cálculo da rota manda ao serviço público OSRM **só as coordenadas** das paradas, sem nomes nem endereços.
 
 ## Versões
-Cada versão publicada tem uma etiqueta (`v0.9.4`, `v0.7.1`…). O código-fonte e o histórico detalhado ficam num repositório privado da equipe.
+Cada versão publicada tem uma etiqueta (`v0.9.6`, `v0.9.4`…). O código-fonte e o histórico detalhado ficam num repositório privado da equipe.
 
 | Versão | Data | Destaques |
 |---|---|---|
+| 0.9.6 | 14/10/2026 | Voltar ao local (2ª visita a uma fiscalização, com motivo e referência da anterior), trocar o tipo de documento depois da vistoria, retorno combinado opcional e atualização mais firme do app no iPhone. |
 | 0.9.4 | 13/10/2026 | Itinerário do dia e da dupla, "Salvar as N na pasta" e aviso de versão nova. |
 | 0.7.1 | 08/10/2026 | Animações e transições mais suaves; correções na leitura do protocolo do 1Doc. |
 | 0.7.0 | 07/10/2026 | Correção sem rede (no Android) e ajustes da versão web. |
