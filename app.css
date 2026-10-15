@@ -437,3 +437,48 @@ button.resumo-docs{width:100%;border:0;font:inherit;text-align:left;cursor:point
 /* atualização da versão web (0.9.5) */
 .atu-web{margin-top:10px}
 .atu-web .estado{display:flex;gap:8px;align-items:center;margin:6px 0}
+
+/* ===== Tablet (desenho do Stitch: barra lateral, duas colunas) =====
+   A partir de 720 px de largura: a barra de baixo vira barra lateral, a página usa a largura toda.
+   A partir de 1000 px (tablet deitado): Início e Vistoria em duas colunas. No celular nada muda. */
+.nav-marca{display:none}
+.nav-inf.so-tablet{display:none}
+@media (min-width:720px){
+ :root{--rail:92px}
+ #app{max-width:none;margin:0;padding-left:var(--rail)}
+ .pag{max-width:1200px;margin:0 auto;padding:20px 28px 28px}
+ .pag.com-nav{padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+ .pag.com-nav.com-rodape{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
+ .nav-inf,.nav-inf.so-tablet{display:flex;flex-direction:column;align-items:stretch;gap:6px;top:0;bottom:0;left:0;right:auto;width:var(--rail);
+  padding:12px 8px calc(12px + env(safe-area-inset-bottom));border-top:0;border-right:1px solid var(--linha);background:var(--sup);z-index:25}
+ .nav-marca{display:flex;flex-direction:column;align-items:center;gap:2px;margin-bottom:14px;color:var(--azul)}
+ .nav-marca .ic{width:44px;height:44px;padding:9px;box-sizing:border-box;border-radius:12px;background:var(--azul);color:#fff}
+ .nav-marca b{font-size:12px;letter-spacing:.5px}.nav-marca small{font-size:10px;color:var(--texto2);letter-spacing:.6px}
+ .nav-inf a{height:auto;padding:8px 0;border-radius:14px;font-size:12px}
+ .nav-inf a.at{background:var(--azul);color:#fff}.nav-inf a.at .ic{background:transparent;color:#fff}
+ .nav-inf a .ic{padding:2px 0}
+ .topo .marca{display:none}                 /* a marca já está na barra lateral */
+ .topo{padding-left:20px;padding-right:20px}
+ .fab{right:28px;bottom:calc(24px + env(safe-area-inset-bottom))}
+ .rodape-fixo{left:var(--rail);max-width:none;margin:0;padding:12px 28px calc(12px + env(safe-area-inset-bottom));display:flex;justify-content:flex-end;gap:12px}
+ .rodape-fixo.duplo{display:flex}
+ .rodape-fixo .bt{min-width:220px}.rodape-fixo .bt.largo{width:auto;min-width:320px}
+ .rodape-fixo.acima-nav{bottom:0}
+ .faixa-nova-versao{left:calc(var(--rail) + 16px);right:16px;bottom:calc(16px + env(safe-area-inset-bottom))}
+ .folha{max-width:640px;border-radius:22px 22px 0 0}
+ /* fotos em grade, maiores */
+ .minis{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));overflow:visible;scroll-snap-type:none}
+ .mini{width:auto;height:200px}
+}
+@media (min-width:1000px){
+ .duas-col{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;align-items:start}
+ .duas-col>.col-a,.duas-col>.col-b{min-width:0}
+ /* Início: à esquerda o que fazer (para vistoriar, em andamento); à direita itinerário, atenção e retornos, que acompanham a rolagem */
+ .duas-col.inicio{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}
+ .duas-col.inicio>.col-a{grid-column:1;grid-row:1}
+ .duas-col.inicio>.col-b{grid-column:2;grid-row:1;position:sticky;top:calc(var(--topo-h) + 16px);max-height:calc(100vh - var(--topo-h) - 32px);overflow:auto}
+ .duas-col.inicio>.col-b>:first-child,.duas-col.inicio>.col-a>:first-child{margin-top:0}
+ /* Vistoria: dados e local à esquerda; fotos e anotações à direita */
+ .duas-col.vist{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)}
+ .duas-col.vist .minis{grid-template-columns:repeat(3,minmax(0,1fr))}
+}

@@ -2,8 +2,8 @@
    Rotas pelo endereço (#inicio, #vistorias, #nova, #v/<id>, #foto/<id>/<n>, #envios, #pronta/<id>, #config).
    Cada vistoria fica em vistorias/<id>.json e as fotos em fotos/<id>/<foto>.jpg, na memória interna do app. */
 
-const VERSAO_APP = '0.9.6 (piloto 11)';
-const CODIGO_APP = 20;              // sobe a cada APK: o Android só instala por cima versão com código maior
+const VERSAO_APP = '0.9.7 (piloto 12)';
+const CODIGO_APP = 21;              // sobe a cada APK: o Android só instala por cima versão com código maior
 let VIST = [];                       // vistorias carregadas
 let cfg = lerCfg();
 
@@ -74,7 +74,7 @@ function topo(titulo, opc){ opc=opc||{};
   '<div class="tt"><small>FUNAT • TUBARÃO</small><h1>'+esc(titulo)+'</h1></div>'+(opc.direita||'<button class="bt-ic redondo" data-ir="#config" aria-label="Meus dados">'+ic('pessoa')+'</button>')+'</header>'; }
 function navInferior(ativo){
  const it=(h, n, r)=>'<a href="'+h+'" class="'+(ativo===h?'at':'')+(h==='#camera'?' cam':'')+'"'+(ativo===h?' aria-current="page"':'')+'>'+ic(n)+'<span>'+r+'</span></a>';
- return '<nav class="nav-inf">'+it('#inicio','casa','Início')+it('#vistorias','lista','Vistorias')+it('#itinerario','rota','Itinerário')+(MODO_WEB? it('#camera','camera','Câmera') : it('#documentos','arquivo','Documentos'))+it('#envios','enviar','Envios')+'</nav>'; }
+ return '<nav class="nav-inf"><span class="nav-marca" aria-hidden="true">'+ic('pino')+'<b>FUNAT</b><small>TUBARÃO</small></span>'+it('#inicio','casa','Início')+it('#vistorias','lista','Vistorias')+it('#itinerario','rota','Itinerário')+(MODO_WEB? it('#camera','camera','Câmera') : it('#documentos','arquivo','Documentos'))+it('#envios','enviar','Envios')+'</nav>'; }
 function faixaTeste(){ return '<div class="faixa">'+ic('aparelho')+'<span>'+(MODO_WEB? 'Salvo neste iPhone. Ao concluir, toque em “Exportar e salvar na pasta” e guarde o arquivo na sua pasta VISTORIAS.' : cfg.pasta? 'Salvo neste aparelho. Ao concluir, vai para a pasta “'+esc(cfg.pasta.nome)+'” quando estiver no Wi-Fi da FUNAT.' : 'Salvo neste aparelho. Configure a pasta da FUNAT em Meus dados para enviar.')+'</span></div>'; }
 function tagTipo(t){ const d=TIPOS_DOC[t]||TIPOS_DOC.relatorio; return '<span class="tag t-'+t+'">'+esc(d.curto.toUpperCase())+'</span>'; }
 
@@ -128,12 +128,12 @@ TELAS.inicio = function(){
   chipEnvio()+'</div>'+faixaAtualizacao()+
   (c.length? '<a class="alerta-envio" href="#envios">'+ic('enviar')+'<span><b>'+c.length+' vistoria'+(c.length>1?'s':'')+' concluída'+(c.length>1?'s':'')+'</b> na fila para a pasta da FUNAT</span></a>' : '')+
   (correcoesComConflito().length? '<a class="alerta-envio conflito" href="#envios">'+ic('alerta')+'<span><b>'+correcoesComConflito().length+' correção(ões)</b> encontraram outra versão na pasta: escolha qual vale</span></a>' : '')+
-  (typeof cartaoItinerario==='function'? cartaoItinerario() : '')+
-  blocoAtencao()+blocoRetornos()+
+  '<div class="duas-col inicio"><div class="col-b">'+(typeof cartaoItinerario==='function'? cartaoItinerario() : '')+
+  blocoAtencao()+blocoRetornos()+'</div><div class="col-a">'+
   (e.length? '<h2 class="secao">Em andamento <span class="cont">'+e.length+'</span></h2>'+e.map(cartao).join('') : '')+
   '<h2 class="secao">Para vistoriar <span class="cont">'+(a.length+dp.length)+'</span></h2>'+linhaPlanilha()+((a.length||dp.length)? dp.slice(0,limDem).map(cartaoDemanda).join('')+(dp.length>limDem? '<a class="resumo-docs" href="#vistorias">'+ic('lista')+'<span>e mais '+(dp.length-limDem)+' demanda'+(dp.length-limDem>1?'s':'')+' da planilha</span>'+ic('voltar','seta-dir')+'</a>' : '')+a.map(cartao).join('') :
    '<div class="vazio">'+ic('lista')+'<p>Nenhuma vistoria agendada.</p><p class="ajuda">'+(cfg.planilhaAtiva? 'Nenhuma demanda aberta sem vistoria na última leitura da planilha.' : 'Ligue as demandas da planilha em Meus dados, ou toque em “Nova vistoria”.')+'</p></div>')+
-  '</main><button class="fab" data-ir="#nova" aria-label="Nova vistoria">'+ic('mais')+'<span class="rot">Nova vistoria</span></button>'+navInferior('#inicio');
+  '</div></div></main><button class="fab" data-ir="#nova" aria-label="Nova vistoria">'+ic('mais')+'<span class="rot">Nova vistoria</span></button>'+navInferior('#inicio');
 };
 
 let abaVist='a_vistoriar', buscaVist='';
@@ -225,19 +225,19 @@ function blocoRuido(v){
 TELAS.v = function(id){
  const v=acharVistoria(id); if(!v) return naoAchou(); const fim=v.status==='concluida';
  return topo(fim? 'Vistoria concluída' : 'Vistoria em andamento', {voltar:true})+faixaTeste()+'<main class="pag com-rodape">'+
-  faixaRetorno(v)+'<section class="bloco"><div class="c-l1">'+tagTipo(v.tipoDocumento)+tagVisita(v)+'<span class="pilula">'+(fim?'Concluída':'Salvo no aparelho')+'</span></div>'+
+  '<div class="duas-col vist"><div class="col-a">'+faixaRetorno(v)+'<section class="bloco"><div class="c-l1">'+tagTipo(v.tipoDocumento)+tagVisita(v)+'<span class="pilula">'+(fim?'Concluída':'Salvo no aparelho')+'</span></div>'+
   '<h2 class="prot">'+esc(protocoloTexto(v))+'</h2>'+(v.assunto?'<p>'+esc(v.assunto)+'</p>':'')+([v.endereco,v.bairro].filter(Boolean).length? '<p class="loc">'+ic('pino')+esc([v.endereco,v.bairro].filter(Boolean).join(' · '))+'</p>' : '')+
   (v.demanda? '<p class="da-planilha">'+ic('lista')+'<span>Da planilha: '+esc(v.demanda.protocolo)+' · repassada em '+esc(v.demanda.repasse||v.demanda.entrada||'?')+(v.demanda.diligencias? ' · '+esc(v.demanda.diligencias) : '')+'</span></p>' : '')+
   '<button class="bt txt" data-ir="#editar/'+v.id+'">'+ic('lapis')+'Editar dados</button>'+
   '<div class="quando">'+ic('relogio')+'<label class="campo"><span>Data da vistoria</span><input type="date" id="vData" value="'+esc(v.dataVistoria)+'"></label><label class="campo"><span>Hora</span><input type="time" id="vHora" value="'+esc(v.horaVistoria)+'"></label></div></section>'+
-  '<section class="bloco"><h2>'+ic('pino')+'Local da vistoria</h2>'+blocoLocal(v)+'</section>'+
+  '<section class="bloco"><h2>'+ic('pino')+'Local da vistoria</h2>'+blocoLocal(v)+'</section></div><div class="col-b">'+
   '<section class="bloco"><div class="h-cont"><h2>Fotos da vistoria</h2><span class="cont grande">'+v.fotos.length+'</span></div>'+
   '<button class="bt pri largo alto" id="vFoto">'+ic('camera')+'Tirar foto com a câmera</button><button class="bt claro largo" id="vGaleria">'+ic('galeria')+'Escolher da galeria</button>'+
   (v.fotos.length? '<div class="minis">'+v.fotos.map((f,i)=>miniFoto(v,f,i)).join('')+'</div><p class="ajuda">Toque numa foto para escrever a legenda, girar ou excluir.</p>' : '')+'</section>'+
   '<section class="bloco"><div class="h-cont"><h2>Anotações de campo</h2><small>voz ou texto</small></div>'+
   '<textarea id="vNotas" rows="6" placeholder="O que foi constatado, quem atendeu, providências…">'+esc(v.anotacoes)+'</textarea>'+
   '<p class="ajuda">'+ic('mic')+'Para ditar, toque no microfone do teclado. No computador, as anotações aparecem no quadro “Vistoria feita no celular”, para você inserir no documento.</p></section>'+blocoRuido(v)+(fim? blocoDocumentoRetorno(v) : '')+
-  '<button class="bt txt perigo apagar-v" id="vApagar">'+ic('lixo')+'Excluir esta vistoria do aparelho</button>'+
+  '<button class="bt txt perigo apagar-v" id="vApagar">'+ic('lixo')+'Excluir esta vistoria do aparelho</button></div></div>'+
   '<div class="rodape-fixo duplo">'+(fim? '<button class="bt sec" id="vReabrir">Reabrir</button><button class="bt pri" data-ir="#envios">'+ic('enviar')+'Envio</button>'
    : '<button class="bt sec" id="vSalvar">Salvar rascunho</button><button class="bt pri" id="vConcluir">'+ic('ok')+'Concluir vistoria</button>')+'</div></main>';
 };
@@ -1232,12 +1232,17 @@ async function instalarBaixada(){ try{ await Pasta.instalarAtualizacao(); }catch
 /* ======================= roteador ======================= */
 function rotaAtual(){ const h=(location.hash||'#inicio').slice(1).split('/'); return {nome:h[0]||'inicio', args:h.slice(1).map(decodeURIComponent)}; }
 let rotaAnterior='';
+/* aba da barra lateral (tablet) para as telas internas, que no celular não têm a barra de baixo */
+const ABA_DA_TELA={v:'#vistorias', foto:'#vistorias', editar:'#vistorias', nova:'#vistorias', pronta:'#vistorias', doc:'#documentos', corrigir:'#documentos', conflito:'#envios',
+ planejar:'#itinerario', parada:'#itinerario', resumo:'#itinerario', pasta:'', config:'', planilha:'', escolher:'', atualizar:'', 'arquivos-ajuda':''};
+function railNasTelasInternas(){ if($('#app .nav-inf')) return; const r=rotaAtual().nome; const a=ABA_DA_TELA[r]; $('#app').insertAdjacentHTML('beforeend', navInferior(a===undefined? '' : a).replace('class="nav-inf"','class="nav-inf so-tablet"')); }
 function mostrar(manterRolagem){
  if(!cfg.nome && rotaAtual().nome!=='config'){ history.replaceState(null, '', '#config'); }
  const r=rotaAtual(), tela=TELAS[r.nome]||TELAS.inicio, y=window.scrollY, chave=location.hash;
  const mov=movimentoDe(chave), chipAntes=($('.chip-sinc')||{}).className||'';
  document.getElementById('app').innerHTML=tela.apply(null, r.args);
  if(tela.ligar) tela.ligar.apply(null, r.args);
+ railNasTelasInternas();
  window.scrollTo(0, manterRolagem && chave===rotaAnterior? y : 0); rotaAnterior=chave;
  animarTela(mov, chipAntes);
 }
