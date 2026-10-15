@@ -2,8 +2,8 @@
    Rotas pelo endereço (#inicio, #vistorias, #nova, #v/<id>, #foto/<id>/<n>, #envios, #pronta/<id>, #config).
    Cada vistoria fica em vistorias/<id>.json e as fotos em fotos/<id>/<foto>.jpg, na memória interna do app. */
 
-const VERSAO_APP = '0.9.7 (piloto 12)';
-const CODIGO_APP = 21;              // sobe a cada APK: o Android só instala por cima versão com código maior
+const VERSAO_APP = '0.9.8 (piloto 13)';
+const CODIGO_APP = 22;              // sobe a cada APK: o Android só instala por cima versão com código maior
 let VIST = [];                       // vistorias carregadas
 let cfg = lerCfg();
 
@@ -91,7 +91,7 @@ function cartao(v){
           : v.status==='em_andamento'? '<button class="bt pri" data-ir="#v/'+v.id+'">'+ic('lapis')+'Continuar</button>'
           : '<button class="bt sec" data-ir="#v/'+v.id+'">Abrir</button><button class="bt claro" data-retorno-v="'+v.id+'">'+ic('girar')+'Voltar ao local</button>';
  const mapa= v.local? '<button class="bt txt" data-mapa="'+v.id+'">'+ic('mapa')+'Ver no mapa</button>' : '';
- return '<article class="cartao st-'+v.status+'"><div class="c-l1">'+tagTipo(v.tipoDocumento)+tagVisita(v)+'<b>'+esc(protocoloTexto(v))+'</b></div>'+
+ return '<article class="cartao st-'+v.status+(selVist==='v:'+v.id?' sel':'')+'" data-sel="v:'+v.id+'"><div class="c-l1">'+tagTipo(v.tipoDocumento)+tagVisita(v)+'<b>'+esc(protocoloTexto(v))+'</b></div>'+
   (v.assunto? '<h3>'+esc(v.assunto)+'</h3>' : '')+(local? '<p class="loc">'+ic('pino')+esc(local)+'</p>' : '')+
   '<p class="st">'+esc(rotuloStatus(v))+'</p><div class="c-ac">'+acao+mapa+'</div></article>'; }
 function ordenadas(lista){ return lista.slice().sort((a,b)=>String(b.editadaEm).localeCompare(String(a.editadaEm))); }
@@ -108,7 +108,7 @@ TELAS.config = function(){
   (cfg.nome && MODO_WEB? '<section class="bloco"><h2>Pasta da FUNAT</h2><p class="ajuda">Nesta versão para iPhone, a vistoria vai para a pasta pelo app <b>Arquivos</b>: ao concluir, toque em “Exportar e salvar na pasta”.</p><button class="bt claro largo" data-ir="#arquivos-ajuda">'+ic('pasta')+'Como ligar o app Arquivos à pasta da FUNAT</button></section>' : '')+
   (cfg.nome && !MODO_WEB? '<section class="bloco"><h2>Pasta da FUNAT</h2><p class="ajuda">'+(cfg.pasta? 'Envia para: <b>'+esc(cfg.pasta.nome)+'</b> › VISTORIAS' : 'Ainda não configurada.')+'</p><button class="bt claro largo" data-ir="#pasta">'+ic('enviar')+(cfg.pasta?'Alterar acesso ou pasta':'Configurar acesso à pasta')+'</button></section>' : '')+
   (cfg.nome? '<section class="bloco"><h2>Demandas da planilha</h2><p class="ajuda">'+(cfg.planilhaAtiva? 'Ligado'+(DEMANDAS&&DEMANDAS.fiscal?': demandas de <b>'+esc(DEMANDAS.fiscal)+'</b>':'')+'.' : 'Desligado. Com a chave do seu nome, as demandas que o Pedro distribui para você aparecem em “Para vistoriar”.')+'</p><button class="bt claro largo" data-ir="#planilha">'+ic('lista')+(cfg.planilhaAtiva?'Chave e situação':'Ligar com a minha chave')+'</button></section>' : '')+
-  blocoAtualizacaoWeb()+'<section class="bloco"><h2>Sobre esta versão</h2><p class="ajuda">FUNAT Fiscalização '+esc(VERSAO_APP)+(MODO_WEB? '. Versão para iPhone: fotos, posições e anotações ficam neste iPhone até você exportar. Ao concluir, toque em “Exportar e salvar na pasta” e guarde o arquivo na sua pasta VISTORIAS pelo app Arquivos.' : '. Fotos, posições e anotações ficam neste aparelho. Ao concluir uma vistoria, o app a envia para a subpasta VISTORIAS da sua pasta, quando o celular está no Wi-Fi da FUNAT. Ele não grava em nenhum outro lugar da rede.')+'</p>'+
+  blocoAtualizacaoWeb()+(cfg.nome? blocoSemInternet() : '')+'<section class="bloco"><h2>Sobre esta versão</h2><p class="ajuda">FUNAT Fiscalização '+esc(VERSAO_APP)+(MODO_WEB? '. Versão para iPhone: fotos, posições e anotações ficam neste iPhone até você exportar. Ao concluir, toque em “Exportar e salvar na pasta” e guarde o arquivo na sua pasta VISTORIAS pelo app Arquivos.' : '. Fotos, posições e anotações ficam neste aparelho. Ao concluir uma vistoria, o app a envia para a subpasta VISTORIAS da sua pasta, quando o celular está no Wi-Fi da FUNAT. Ele não grava em nenhum outro lugar da rede.')+'</p>'+
   (!MODO_WEB && cfg.nome? '<p class="ajuda">'+(atualizacaoDisponivel()? '<a href="#atualizar"><b>Nova versão '+esc(cfg.atualizacao.versao)+' disponível.</b></a>' : 'Atualizações: o app confere sozinho a pasta '+esc(PASTA_ATUALIZACAO)+' quando está no Wi-Fi da FUNAT'+(cfg.versaoConferidaEm? ' (última conferência '+esc(quandoRelativo(new Date(cfg.versaoConferidaEm).toISOString()))+')' : '')+'.')+(DEMANDAS && DEMANDAS.versaoScript? ' Script da planilha: versão '+esc(DEMANDAS.versaoScript)+'.' : '')+'</p><button class="bt claro largo" id="cfAtualizar">'+ic('baixar')+'Procurar atualização agora</button>' : '')+'</section>'+
   '<div class="rodape-fixo"><button class="bt pri largo" id="cfOk">'+(cfg.nome? 'Salvar' : 'Começar')+'</button></div></main>';
 };
@@ -125,7 +125,7 @@ function blocoAtencao(){
 TELAS.inicio = function(){
  const a=ordenadas(VIST.filter(v=>v.status==='a_vistoriar')), e=ordenadas(VIST.filter(v=>v.status==='em_andamento')), c=pendentesEnvio(VIST), dp=demandasParaVistoriar(), limDem=5;
  return topo('Início')+'<main class="pag com-nav"><div class="ola"><div><h2>'+esc(saudacaoCampo())+', '+esc(primeiroNome(cfg.nome))+'</h2><p>'+esc(hojeExtenso())+'</p></div>'+
-  chipEnvio()+'</div>'+faixaAtualizacao()+
+  chipEnvio()+'</div>'+faixaAtualizacao()+faixaSemInternet()+
   (c.length? '<a class="alerta-envio" href="#envios">'+ic('enviar')+'<span><b>'+c.length+' vistoria'+(c.length>1?'s':'')+' concluída'+(c.length>1?'s':'')+'</b> na fila para a pasta da FUNAT</span></a>' : '')+
   (correcoesComConflito().length? '<a class="alerta-envio conflito" href="#envios">'+ic('alerta')+'<span><b>'+correcoesComConflito().length+' correção(ões)</b> encontraram outra versão na pasta: escolha qual vale</span></a>' : '')+
   '<div class="duas-col inicio"><div class="col-b">'+(typeof cartaoItinerario==='function'? cartaoItinerario() : '')+
@@ -145,14 +145,19 @@ TELAS.vistorias = function(){
  const dems=abaVist==='a_vistoriar'? demandasParaVistoriar().filter(casa) : abaVist==='fiscalizadas'? demandasFiscalizadas().filter(casa) : [];
  const contar=k=>k==='retornos'? retornosAgendados(VIST).length : k==='fiscalizadas'? demandasFiscalizadas().length : VIST.filter(v=>v.status===k).length+(k==='a_vistoriar'? demandasParaVistoriar().length : 0);
  const lista=abaVist==='fiscalizadas'? [] : abaVist==='retornos'? retornosAgendados(VIST).filter(v=>!q || [protocoloTexto(v), v.assunto, v.bairro, v.endereco].join(' ').toLowerCase().includes(q)) : ordenadas(VIST.filter(v=>v.status===abaVist && (!q || [protocoloTexto(v), v.assunto, v.bairro, v.endereco, v.autuado].join(' ').toLowerCase().includes(q))));
- return topo('Vistorias')+'<main class="pag com-nav"><label class="busca">'+ic('busca')+'<input id="vBusca" type="search" placeholder="Buscar protocolo, assunto ou bairro" value="'+esc(buscaVist)+'"></label>'+
+ const itens=dems.map(d=>({sel:'d:'+idDemanda(d), d:d})).concat(lista.map(v=>({sel:'v:'+v.id, v:v})));
+ if(LARGO() && itens.length && !itens.some(x=>x.sel===selVist)) selVist=itens[0].sel;
+ ITENS_VIST=itens;
+ return topo('Vistorias')+'<main class="pag com-nav"><div class="duas-col lista-det"><div class="col-a"><label class="busca">'+ic('busca')+'<input id="vBusca" type="search" placeholder="Buscar protocolo, assunto ou bairro" value="'+esc(buscaVist)+'"></label>'+
   '<div class="abas" role="tablist">'+abas.map(([k,r])=>'<button role="tab" aria-selected="'+(k===abaVist)+'" data-aba="'+k+'">'+r+' <span class="cont">'+contar(k)+'</span></button>').join('')+'</div>'+
   (['a_vistoriar','fiscalizadas'].includes(abaVist)? linhaPlanilha() : '')+(abaVist==='fiscalizadas'? '<p class="ajuda">Demandas ainda abertas na planilha que já têm vistoria: o que falta é o documento.</p>' : '')+
   '<div id="vLista">'+((lista.length||dems.length)? dems.map(cartaoDemanda).join('')+lista.map(abaVist==='retornos'? cartaoRetorno : cartao).join('') : '<div class="vazio"><p>Nada aqui'+(q?' com essa busca':'')+'.</p></div>')+'</div>'+
-  '</main><button class="fab" data-ir="#nova" aria-label="Nova vistoria">'+ic('mais')+'<span class="rot">Nova vistoria</span></button>'+navInferior('#vistorias');
+  '</div><aside class="col-b so-largo">'+(LARGO()? painelVistoria(itens) : '')+'</aside></div></main><button class="fab" data-ir="#nova" aria-label="Nova vistoria">'+ic('mais')+'<span class="rot">Nova vistoria</span></button>'+navInferior('#vistorias');
 };
 TELAS.vistorias.ligar = function(){
- $$('[data-aba]').forEach(b=>b.onclick=()=>{ abaVist=b.dataset.aba; mostrar(); });
+ $$('[data-aba]').forEach(b=>b.onclick=()=>{ abaVist=b.dataset.aba; selVist=''; mostrar(); });
+ ligarSelecao('#vLista', id=>{ selVist=id; mostrar(true); });
+ if(LARGO()) desenharMapaVistorias(ITENS_VIST);
  const i=$('#vBusca'); if(i) i.oninput=()=>{ buscaVist=i.value; const pos=i.selectionStart; mostrar(); const n=$('#vBusca'); n.focus(); n.setSelectionRange(pos,pos); };
 };
 
@@ -752,7 +757,10 @@ TELAS.documentos = function(){
  const docs=docsDe(p), lido=lidoEmDe(p), q=filtroDocs.trim().toLowerCase();
  const filtrados=docs.filter(d=>!q || [d.protocolo,d.titulo,d.elaborador].join(' ').toLowerCase().includes(q));
  const porGrupo=g=>filtrados.filter(d=>grupoDocumento(d)===g).sort((a,b)=>(b.modificado||0)-(a.modificado||0));
- return topo('Documentos')+'<main class="pag com-nav">'+
+  const ordem=GRUPOS_DOC.map(([g])=>porGrupo(g)).reduce((a,l)=>a.concat(l),[]);
+  if(LARGO() && ordem.length && !ordem.some(d=>d.id===selDoc)) selDoc=ordem[0].id;
+  const escolhido=LARGO()? ordem.find(d=>d.id===selDoc) : null;
+  return topo('Documentos')+'<main class="pag com-nav"><div class="duas-col lista-det docs"><div class="col-a">'+
   '<div class="pasta-atual">'+ic('pasta')+'<div><b>'+esc(p.nome)+'</b><small>'+(cfg.pastaConsulta? 'Só consulta · ' : '')+(docsLendo? 'Lendo a pasta…' : lido? 'Lida '+esc(quandoRelativo(new Date(lido).toISOString())) : 'Ainda não lida')+'</small></div>'+
   '<button class="bt-ic" id="dAtualizar" aria-label="Ler a pasta de novo"'+(docsLendo?' disabled':'')+'>'+(docsLendo? '<div class="giro"></div>' : ic('girar'))+'</button></div>'+
   '<div class="c-ac troca">'+(cfg.pastaConsulta? '<button class="bt txt" id="dMinha">'+ic('voltar')+'Voltar para a minha pasta</button>' : '')+'<button class="bt txt" data-ir="#escolher/'+encodeURIComponent(PASTA_BASE)+'/consulta">'+ic('busca')+'Ver outra pasta</button></div>'+
@@ -761,10 +769,13 @@ TELAS.documentos = function(){
   (docs.length? GRUPOS_DOC.map(([g,r])=>{ const l=porGrupo(g); if(!l.length) return ''; const lim=g==='postado'? 8 : 999;
     return '<h2 class="secao g-'+g+'">'+r+' <span class="cont">'+l.length+'</span></h2>'+l.slice(0,lim).map(cartaoDoc).join('')+(l.length>lim? '<p class="ajuda">e mais '+(l.length-lim)+' no 1Doc.</p>' : ''); }).join('')
    : '<div class="vazio">'+ic('arquivo')+'<p>'+(lido? 'Nenhum documento das ferramentas nesta pasta.' : docsLendo? 'Lendo…' : 'Toque em ↻ para ler a pasta (no Wi-Fi da FUNAT).')+'</p></div>')+
-  '</main>'+navInferior('#documentos');
+  '</div><aside class="col-b so-largo doc-lado">'+(escolhido? corpoDoc(escolhido) : '')+'</aside></div></main>'+navInferior('#documentos');
 };
 TELAS.documentos.ligar = function(){
  const p=pastaDocs(); if(!p) return;
+ /* tablet deitado: tocar no documento mostra à direita (com o histórico), sem sair da lista */
+ if(LARGO()) $$('#app .col-a a.cartao.doc').forEach(a=>a.onclick=e=>{ e.preventDefault(); selDoc=decodeURIComponent(a.getAttribute('href').replace(/^#doc\//,'')); mostrar(true); });
+ if(LARGO()) $$('#app .col-a a.cartao.doc').forEach(a=>a.classList.toggle('sel', decodeURIComponent(a.getAttribute('href').replace(/^#doc\//,''))===selDoc));
  cacheDocs().then(()=>{ if(rotaAtual().nome==='documentos' && !$('.cartao.doc') && docsDe(p).length) mostrar(true); });
  if($('#dAtualizar')) $('#dAtualizar').onclick=()=>atualizarDocumentos(p, {});
  if($('#dMinha')) $('#dMinha').onclick=()=>{ delete cfg.pastaConsulta; gravarCfg(); docsErro=''; mostrar(); if(Date.now()-lidoEmDe(pastaDocs())>5*60e3) atualizarDocumentos(pastaDocs(), {silencioso:true}); };
@@ -773,9 +784,12 @@ TELAS.documentos.ligar = function(){
 };
 TELAS.doc = function(id){
  const d=docsDe(pastaDocs()).find(x=>x.id===id); if(!d) return topo('Documento', {voltar:true})+'<main class="pag"><div class="vazio"><p>Documento não encontrado na última leitura da pasta.</p></div></main>';
+ return topo('Documento', {voltar:true, direita:'<span></span>'})+'<main class="pag">'+corpoDoc(d)+'</main>';
+};
+/* o documento: situação, trilha, apontamentos, correção e histórico (tela própria no celular; lado direito no tablet) */
+function corpoDoc(d){
  const notas=d.notas.slice().sort((a,b)=>a.resolvida-b.resolvida);
- return topo('Documento', {voltar:true, direita:'<span></span>'})+'<main class="pag">'+
-  '<section class="bloco"><div class="c-l1">'+tagTipo(d.tipo)+'<span class="pilula">'+esc(ESTADOS_DOC[d.status])+(d.postado?' · no 1Doc':'')+'</span></div><h2 class="prot">'+esc(d.protocolo||'(sem protocolo)')+'</h2>'+(d.titulo?'<p>'+esc(d.titulo)+'</p>':'')+
+ return '<section class="bloco"><div class="c-l1">'+tagTipo(d.tipo)+'<span class="pilula">'+esc(ESTADOS_DOC[d.status])+(d.postado?' · no 1Doc':'')+'</span></div><h2 class="prot">'+esc(d.protocolo||'(sem protocolo)')+'</h2>'+(d.titulo?'<p>'+esc(d.titulo)+'</p>':'')+
   trilhaDoc(d)+'<p class="sit">'+esc(situacaoDoc(d))+'</p>'+
   '<dl class="dados-doc"><dt>Elaborado por</dt><dd>'+esc(d.elaborador||'–')+'</dd><dt>Vistoria</dt><dd>'+esc(d.datas.map(dataBrCampo).join(', ')||'–')+'</dd><dt>Fotos</dt><dd>'+d.fotos+'</dd><dt>Arquivo</dt><dd class="cam">'+esc(d.caminho)+'</dd></dl></section>'+
   (notas.length? '<section class="bloco"><h2>Apontamentos do revisor <span class="cont">'+d.notasAbertas+' em aberto</span></h2>'+notas.map(n=>'<div class="nota '+(n.resolvida?'ok':'aberta')+'"><div class="n-cab"><b>'+esc(n.rotulo)+'</b><span class="pilula">'+(n.resolvida?'resolvido':'em aberto')+'</span></div><p>'+esc(n.texto)+'</p>'+(n.resposta?'<p class="resp"><b>Resposta:</b> '+esc(n.resposta)+'</p>':'')+'<small>'+esc([n.autor, n.data? dataCurta(n.data) : ''].filter(Boolean).join(' · '))+'</small></div>').join('')+
@@ -784,8 +798,8 @@ TELAS.doc = function(id){
     : '<button class="bt pri largo alto" data-ir="#corrigir/'+encodeURIComponent(d.id)+'">'+ic('lapis')+(RASCS[d.id]? (RASCS[d.id].pendente? 'Correção na fila – abrir' : 'Continuar a correção') : 'Corrigir no celular')+'</button>')+
    '<p class="ajuda">Funciona sem rede: o que você corrigir vai para a pasta quando o celular voltar ao Wi-Fi da FUNAT. Ou corrija no computador (Painel do Auxiliar › Corrigir).</p>' : '')+
   (d.historico.length? '<section class="bloco"><h2>Histórico</h2><ol class="hist">'+d.historico.slice().reverse().map(h=>'<li><b>'+esc(h.acao)+'</b><small>'+esc([h.autor, h.data? new Date(h.data).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''].filter(Boolean).join(' · '))+'</small></li>').join('')+'</ol></section>' : '')+
-  '</main>';
-};
+  '';
+}
 
 /* ======================= DEMANDAS DA PLANILHA (fase 1: só leitura) =======================
    A lista vem do script da planilha (aplicativo da web) e fica guardada no aparelho para usar no campo,
@@ -815,7 +829,7 @@ function demandasFiscalizadas(){ return ((DEMANDAS&&DEMANDAS.itens)||[]).filter(
 function cartaoDemanda(d){
  const du=diasUteisDesde(dataBrParaIso(d.repasse||d.entrada)), f=fiscalizadaEm(d), doc=documentoDe(d), v=vistoriaDe(d), id=encodeURIComponent(idDemanda(d));
  const e=separarEndereco(d.endereco);
- return '<article class="cartao demanda'+(du>=15?' velha':'')+'"><div class="c-l1"><span class="tag t-planilha">PLANILHA</span><b>'+esc(d.protocolo)+'</b>'+(du!==null? '<span class="idade'+(du>=15?' muito':'')+'">'+(du? 'há '+du+' dia'+(du>1?'s':'')+' úte'+(du>1?'is':'l') : 'hoje')+'</span>' : '')+'</div>'+
+ return '<article class="cartao demanda'+(du>=15?' velha':'')+(selVist==='d:'+idDemanda(d)?' sel':'')+'" data-sel="d:'+esc(idDemanda(d))+'"><div class="c-l1"><span class="tag t-planilha">PLANILHA</span><b>'+esc(d.protocolo)+'</b>'+(du!==null? '<span class="idade'+(du>=15?' muito':'')+'">'+(du? 'há '+du+' dia'+(du>1?'s':'')+' úte'+(du>1?'is':'l') : 'hoje')+'</span>' : '')+'</div>'+
   (d.assunto? '<h3>'+esc(d.assunto)+'</h3>' : '')+(d.endereco? '<p class="loc">'+ic('pino')+esc([e.bairro,e.endereco].filter(Boolean).join(' · '))+'</p>' : '')+
   '<p class="st">'+esc(!naoIniciada(d) && d.situacaoTexto? d.situacaoTexto+(f? ' · fiscalizado em '+dataBrCampo(f) : '') : f? 'Fiscalizado em '+dataBrCampo(f)+' (planilha)' : v? ((ehRetorno(v)? numeroVisita(v)+'ª visita ' : 'Vistoria ')+(v.status==='concluida'? 'concluída no app' : 'em andamento no app')) : 'Ainda não vistoriada · repassada em '+(d.repasse||d.entrada||'?'))+'</p>'+
   (d.observacoes? '<p class="obs">'+ic('lapis')+esc(d.observacoes)+'</p>' : '')+(d.diligencias && !/^\s*fiscaliz\w*\s*\d/i.test(d.diligencias)? '<p class="obs">'+ic('lista')+esc(d.diligencias)+'</p>' : '')+
@@ -833,6 +847,69 @@ async function iniciarDaDemanda(id){
  const v=vistoriaDaDemanda(d, tipoSugerido(d)); iniciarVistoria(v); await gravarVistoria(v);
  location.hash='#v/'+v.id; aviso('Vistoria iniciada às '+v.horaVistoria+'. Confira o tipo de documento em “Editar dados”.', 4500);
 }
+/* ======================= TABLET: listas com detalhe ao lado =======================
+   Só no tablet deitado (1000 px ou mais). No celular e no tablet em pé, tudo continua como antes. */
+const LARGO=()=>!!(window.matchMedia && matchMedia('(min-width:1000px)').matches);
+try{ matchMedia('(min-width:1000px)').addEventListener('change', ()=>mostrar(true)); }catch(e){}
+let selVist='', selDoc='', ITENS_VIST=[], mapaLado=null;
+/* tocar no cartão (fora dos botões) escolhe o item */
+function ligarSelecao(seletor, fn){
+ if(!LARGO()) return;
+ $$(seletor+' [data-sel]').forEach(c=>c.onclick=e=>{ if(e.target.closest('button,a,input,select,textarea,label')) return; fn(c.dataset.sel); });
+}
+function pontoDoItem(x){
+ if(x.v) return x.v.local && x.v.local.lat!==undefined? {lat:x.v.local.lat, lng:x.v.local.lon} : null;
+ return typeof pontoDe==='function'? pontoDe(x.d) : null;
+}
+function painelVistoria(itens){
+ const x=itens.find(i=>i.sel===selVist);
+ if(!x) return '<div class="vazio"><p>Nada para mostrar nesta aba.</p></div>';
+ const v=x.v, d=x.d;
+ return '<div id="mapaLado" class="it-mapa lado" role="img" aria-label="Mapa"></div>'+
+  '<div class="lado-detalhe">'+(d? cartaoDemanda(d) : (abaVist==='retornos'? cartaoRetorno(v) : cartao(v)))+
+  (v && v.anotacoes? '<section class="bloco"><h2>Anotações de campo</h2><p class="cita-ant">'+esc(String(v.anotacoes).slice(0,600))+'</p></section>' : '')+
+  (d && (d.diligencias||d.observacoes)? '<section class="bloco"><h2>Na planilha</h2>'+(d.diligencias? '<p><b>Diligências:</b> '+esc(d.diligencias)+'</p>' : '')+(d.observacoes? '<p><b>Observações:</b> '+esc(d.observacoes)+'</p>' : '')+'</section>' : '')+'</div>';
+}
+/* mapa do lado direito: os itens da aba numerados, o escolhido em destaque */
+function desenharMapaVistorias(itens){
+ const el=document.getElementById('mapaLado'); if(!el || typeof L==='undefined' || !el.offsetWidth) return;
+ if(mapaLado){ try{ mapaLado.remove(); }catch(e){} mapaLado=null; }
+ const m=L.map(el, {zoomControl:true, attributionControl:true}); mapaLado=m;
+ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:18, attribution:'© OpenStreetMap'}).addTo(m);
+ const b=typeof baseFunat==='function'? baseFunat() : null, pts=[];
+ if(b && b.lat!==undefined){ L.marker([b.lat, b.lng], {icon:L.divIcon({className:'it-pino base', html:'F', iconSize:[30,30]}), title:'FUNAT'}).addTo(m); pts.push([b.lat, b.lng]); }
+ itens.forEach((x,i)=>{ const p=pontoDoItem(x); if(!p) return; const sel=x.sel===selVist;
+  const mk=L.marker([p.lat, p.lng], {icon:L.divIcon({className:'it-pino'+(sel?' st-agora':''), html:String(i+1), iconSize:[28,28]}), title:x.d? x.d.protocolo : protocoloTexto(x.v)}).addTo(m);
+  mk.on('click', ()=>{ selVist=x.sel; mostrar(true); }); pts.push([p.lat, p.lng]); });
+ const s=itens.find(x=>x.sel===selVist), ps=s && pontoDoItem(s);
+ if(ps) m.setView([ps.lat, ps.lng], 15); else if(pts.length>1) m.fitBounds(L.latLngBounds(pts).pad(0.15)); else if(pts.length) m.setView(pts[0], 14); else m.setView([-28.48,-49.01], 13);
+}
+
+/* ======================= USO SEM INTERNET (sobretudo no iPhone) ======================= */
+const SEM_REDE={persistente:null, usadoMB:null, cotaMB:null, guardado:null};
+async function conferirUsoOffline(){
+ try{ if(navigator.storage && navigator.storage.persist) SEM_REDE.persistente=(await navigator.storage.persisted()) || (await navigator.storage.persist()); }catch(e){}
+ try{ if(navigator.storage && navigator.storage.estimate){ const e=await navigator.storage.estimate(); SEM_REDE.usadoMB=Math.round((e.usage||0)/1048576); SEM_REDE.cotaMB=e.quota? Math.round(e.quota/1048576) : null; } }catch(e){}
+ try{ if(MODO_WEB && 'caches' in window){ const ks=await caches.keys(); SEM_REDE.guardado=!!(navigator.serviceWorker && navigator.serviceWorker.controller) && ks.some(k=>/^funat-campo-/.test(k)); } }catch(e){}
+}
+const ESPACO_ALERTA_MB=800;
+function faixaSemInternet(){
+ const off=navigator.onLine===false, cheio=SEM_REDE.usadoMB!==null && SEM_REDE.usadoMB>ESPACO_ALERTA_MB;
+ if(!off && !cheio) return '';
+ return (off? '<div class="faixa semrede">'+ic('aparelho')+'<span><b>Sem internet.</b> Pode trabalhar normalmente: vistorias, fotos e anotações ficam salvas neste '+(MODO_WEB? 'iPhone' : 'aparelho')+'. '+(MODO_WEB? 'Exporte quando estiver no Wi-Fi da FUNAT.' : 'Vão para a pasta quando voltar ao Wi-Fi da FUNAT.')+'</span></div>' : '')+
+  (cheio? '<div class="faixa cheio">'+ic('alerta')+'<span>As fotos guardadas já ocupam <b>'+SEM_REDE.usadoMB+' MB</b>. '+(MODO_WEB? 'Exporte as vistorias concluídas e exclua as já entregues' : 'Envie as vistorias concluídas')+' para liberar espaço.</span></div>' : '');
+}
+function blocoSemInternet(){
+ const sim=x=>x===true? '<b class="boa">sim</b>' : x===false? '<b class="ruim">não</b>' : '—';
+ return '<section class="bloco"><h2>'+ic('aparelho')+'Uso sem internet</h2><dl class="dados-doc">'+
+  (MODO_WEB? '<dt>App guardado no aparelho</dt><dd>'+sim(SEM_REDE.guardado)+(SEM_REDE.guardado===false? ' · abra uma vez com internet' : '')+'</dd>' : '')+
+  '<dt>Dados protegidos contra limpeza</dt><dd>'+sim(SEM_REDE.persistente)+'</dd>'+
+  '<dt>Espaço usado</dt><dd>'+(SEM_REDE.usadoMB!==null? SEM_REDE.usadoMB+' MB'+(SEM_REDE.cotaMB? ' de ~'+(SEM_REDE.cotaMB>2048? Math.round(SEM_REDE.cotaMB/1024)+' GB' : SEM_REDE.cotaMB+' MB') : '') : '—')+'</dd></dl>'+
+  (MODO_WEB? '<p class="ajuda"><span>Use sempre pelo <b>ícone na Tela de Início</b> (não pela aba do Safari), abra o app <b>uma vez por dia com internet</b> e não limpe os dados do Safari: assim ele funciona sem sinal, com fotos e GPS.</span></p>' : '')+'</section>';
+}
+window.addEventListener('online', ()=>{ if(['inicio','vistorias'].includes(rotaAtual().nome)) mostrar(true); });
+window.addEventListener('offline', ()=>{ if(['inicio','vistorias'].includes(rotaAtual().nome)) mostrar(true); });
+
 /* ======================= RETORNO AO LOCAL ======================= */
 /* Folha de baixo para cima com opções (data-f); devolve o valor escolhido ou null. O botão voltar do Android também fecha. */
 let fecharFolha=null;
@@ -873,7 +950,7 @@ async function voltarAoLocal(o){
 /* Retornos combinados (opcional): aparecem no Início a partir de 7 dias antes da data, e em Vistorias › Retornos */
 function cartaoRetorno(v){
  const dias=diasAte(v.voltarEm), local=[v.bairro, v.endereco].filter(Boolean).join(' · ');
- return '<article class="cartao retorno'+(dias<0? ' velha' : '')+'"><div class="c-l1">'+tagTipo(v.tipoDocumento)+'<span class="tag t-visita">RETORNO</span><b>'+esc(protocoloTexto(v))+'</b><span class="idade'+(dias<0? ' muito' : '')+'">'+esc(textoPrazoRetorno(dias))+'</span></div>'+
+ return '<article class="cartao retorno'+(dias<0? ' velha' : '')+(selVist==='v:'+v.id?' sel':'')+'" data-sel="v:'+v.id+'"><div class="c-l1">'+tagTipo(v.tipoDocumento)+'<span class="tag t-visita">RETORNO</span><b>'+esc(protocoloTexto(v))+'</b><span class="idade'+(dias<0? ' muito' : '')+'">'+esc(textoPrazoRetorno(dias))+'</span></div>'+
   (v.assunto? '<h3>'+esc(v.assunto)+'</h3>' : '')+(local? '<p class="loc">'+ic('pino')+esc(local)+'</p>' : '')+
   '<p class="st">Voltar em '+esc(dataBrCampo(v.voltarEm))+' · '+numeroVisita(v)+'ª visita em '+esc(dataBrCampo(v.dataVistoria))+'</p>'+
   '<div class="c-ac"><button class="bt pri" data-retorno-v="'+v.id+'">'+ic('girar')+'Voltar ao local</button><button class="bt txt" data-ir="#v/'+v.id+'">Abrir</button>'+
@@ -1310,7 +1387,7 @@ aoVoltarParaOApp(async()=>{
  recuperarFotoDaCamera();
  try{ if(typeof carregarItinerario==='function') await carregarItinerario(); }catch(e){ console.error(e); }
  try{ await carregarRascunhos(); }catch(e){ console.error(e); }
- mostrar(); iniciarAtualizacaoWeb();
+ mostrar(); iniciarAtualizacaoWeb(); conferirUsoOffline().then(()=>{ if(['inicio','config'].includes(rotaAtual().nome)) mostrar(true); });
  if(!MODO_WEB && !atualizacaoDisponivel()) Pasta.apagarAtualizacao().catch(()=>{});   /* sobra de uma atualização já instalada */
  await enviarPendentes({silencioso:true}); conferirAtualizacao();
  await cacheDocs(); await carregarDemandas(); if(['inicio','vistorias','planejar','itinerario','parada','resumo'].includes(rotaAtual().nome)) mostrar(true);

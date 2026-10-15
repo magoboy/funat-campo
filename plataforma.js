@@ -107,7 +107,17 @@ const Aparelho = {
    catch(e){ throw new Error(/disabled|desativ|location services/i.test(String(e.message))? 'A localização do celular está desligada. Ligue-a na barra de atalhos e tente de novo.' : 'Não foi possível obter a posição agora ('+(e.message||e)+'). Vá para céu aberto e tente de novo.'); }
   }
   if(!navigator.geolocation) throw new Error('Este navegador não informa a posição.');
-  return await new Promise((res, rej)=>navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude, lon:p.coords.longitude, precisao:p.coords.accuracy}), e=>rej(new Error('Não foi possível obter a posição ('+e.message+').')), op));
+  /* sem internet o GPS do iPhone demora mais (não tem a ajuda da rede): se a primeira tentativa esgotar o tempo,
+     tenta de novo por mais 60 s e aceita uma posição de até 5 minutos atrás */
+  const pedir=o=>new Promise((res, rej)=>navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude, lon:p.coords.longitude, precisao:p.coords.accuracy}), rej, o));
+  try{ return await pedir(op); }
+  catch(e){
+   if(e && e.code===1) throw new Error('O site não tem permissão para usar a localização. No iPhone: Ajustes › Privacidade › Serviços de Localização › Safari (ou o app) › Durante o Uso.');
+   if(e && e.code===3){ if(typeof ocupado==='function') ocupado('Sem internet o GPS demora mais. Fique em céu aberto…', {gps:true});
+    try{ return await pedir({enableHighAccuracy:true, timeout:60000, maximumAge:300000}); }
+    catch(e2){ throw new Error('O GPS não achou a posição. Sem internet ele demora mais: vá para céu aberto e tente de novo. Dá para registrar a posição depois; a vistoria não trava.'); } }
+   throw new Error('Não foi possível obter a posição ('+((e && e.message)||e)+').');
+  }
  },
  /* Grava o texto num arquivo temporário e abre a folha "Compartilhar" do Android */
  async compartilhar(nome, texto, titulo){

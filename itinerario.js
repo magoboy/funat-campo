@@ -103,7 +103,7 @@ TELAS.planejar = function(){
  const vis=PLAN.bairro? lista.filter(d=>bairroDe(d.endereco)===PLAN.bairro) : lista;
  const base=baseFunat(), sel=PLAN.sel? minhas.concat(equipe).filter(d=>PLAN.sel.has(idDemanda(d))) : [];
  const est=estimativa(sel, base);
- return topo('Planejar o dia', {voltar:true, direita:'<span class="pilula">'+esc(hojeExtenso().split(',')[0])+', '+new Date().getDate()+'/'+(new Date().getMonth()+1)+'</span>'})+'<main class="pag com-rodape">'+
+ return topo('Planejar o dia', {voltar:true, direita:'<span class="pilula">'+esc(hojeExtenso().split(',')[0])+', '+new Date().getDate()+'/'+(new Date().getMonth()+1)+'</span>'})+'<main class="pag com-rodape"><div class="duas-col plano"><div class="col-a">'+
   '<section class="bloco it-dupla"><h2>Dupla de hoje</h2><div class="it-chips"><span class="it-pessoa eu">'+esc(primeiroNome(cfg.nome)||nomeFiscal(meuFiscal()))+' (eu)</span>'+
    '<label class="it-pessoa"><select id="plParceiro"><option value="">Sem dupla</option>'+cols.map(f=>'<option value="'+esc(f)+'"'+(f===parc?' selected':'')+'>'+esc(nomeFiscal(f))+'</option>').join('')+'</select></label></div>'+
    '<p class="ajuda"><span>'+ic('aparelho')+'No mesmo veículo. Cada fiscal vistoria só as suas demandas: as do colega entram para montar a rota.</span></p></section>'+
@@ -113,6 +113,10 @@ TELAS.planejar = function(){
   (itinerarioDeHoje()? '<p class="faixa-in">'+ic('rota')+'<span>Já existe um itinerário hoje, com '+itinerarioDeHoje().paradas.length+' paradas. Otimizar de novo substitui a rota; as paradas já resolvidas continuam marcadas.</span></p>' : '')+
   '<p class="it-sel"><span>'+sel.length+' selecionada'+(sel.length===1?'':'s')+(sel.length? ' · <button class="bt txt mini-bt" id="plLimpar">limpar</button>' : '')+'</span><button class="bt txt mini-bt" id="plTodas">'+(PLAN.sel && vis.length && vis.every(d=>PLAN.sel.has(idDemanda(d)))? 'Desmarcar estas' : 'Marcar estas')+'</button></p>'+
   (vis.length? vis.map(d=>cartaoPlano(d, base)).join('') : '<div class="vazio"><p>Nenhuma demanda para vistoriar nesta lista.</p><p class="ajuda">'+(DEMANDAS && DEMANDAS.equipe? '' : 'Leia a planilha de novo no Wi-Fi da FUNAT para trazer as demandas da equipe.')+'</p></div>')+
+  '</div><aside class="col-b so-largo"><div id="mapaPlano" class="it-mapa lado alto" role="img" aria-label="Mapa das demandas escolhidas"></div>'+
+   '<section class="bloco it-resumo-lado"><h2>Resumo do roteiro</h2><p class="it-grande"><b>'+sel.length+' parada'+(sel.length===1?'':'s')+'</b>'+(sel.length? ' · ~'+esc(kmTxt(est.dist))+' · ~'+esc(duracaoTxt(est.dur+sel.length*MIN_VISTORIA*60))+' com as vistorias' : '')+'</p>'+
+   '<p class="ajuda"><span>Estimativa em linha reta. “Otimizar a rota” calcula pelas ruas e define a ordem.</span></p>'+
+   (sel.length? '<p class="ajuda"><span>'+[...new Set(sel.map(d=>d.doColega? nomeFiscal(d.fiscal) : (primeiroNome(cfg.nome)||'eu')))].map(n=>esc(n)+': '+sel.filter(d=>(d.doColega? nomeFiscal(d.fiscal) : (primeiroNome(cfg.nome)||'eu'))===n).length).join(' · ')+'</span></p>' : '')+'</section></aside></div>'+
   '<div class="rodape-fixo it-rodape"><p><b>'+sel.length+' selecionada'+(sel.length===1?'':'s')+'</b>'+(sel.length? ' · ~'+esc(kmTxt(est.dist))+' · ~'+esc(duracaoTxt(est.dur+sel.length*MIN_VISTORIA*60)) : '')+'<small>'+[...new Set(sel.map(d=>d.doColega? nomeFiscal(d.fiscal) : 'eu'))].map(x=>x).join(' · ')+(sel.some(d=>!pontoDe(d))? ' · '+sel.filter(d=>!pontoDe(d)).length+' sem posição' : '')+'</small></p>'+
   '<button class="bt pri largo alto" id="plOtimizar"'+(sel.length?'':' disabled')+'>'+ic('rota')+'Otimizar a rota</button></div></main>';
 };
@@ -130,7 +134,21 @@ function estimativa(lista, base){
  const m=matrizLinhaReta(pts), o=resolverOrdem(m.dist), tr=trechosDaOrdem(m, o);
  return {dist:tr.reduce((a,t)=>a+t.dist,0), dur:tr.reduce((a,t)=>a+t.dur,0)};
 }
+/* mapa das demandas escolhidas (antes de otimizar: sem rota, só os pontos) */
+function desenharMapaPlano(){
+ const el=document.getElementById('mapaPlano'); if(!el || typeof L==='undefined' || !el.offsetWidth) return;
+ if(mapaRota){ try{ mapaRota.remove(); }catch(e){} mapaRota=null; }
+ const m=L.map(el, {zoomControl:true}); mapaRota=m;
+ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:18, attribution:'© OpenStreetMap'}).addTo(m);
+ const base=baseFunat(), pts=[[base.lat, base.lng]];
+ L.marker([base.lat, base.lng], {icon:L.divIcon({className:'it-pino base', html:'F', iconSize:[30,30]}), title:'FUNAT'}).addTo(m);
+ const {minhas, equipe}=demandasDoPlano(); let n=0;
+ minhas.concat(equipe).filter(d=>PLAN.sel && PLAN.sel.has(idDemanda(d))).forEach(d=>{ const p=pontoDe(d); if(!p) return; n++;
+  L.marker([p.lat, p.lng], {icon:L.divIcon({className:'it-pino'+(d.doColega?' colega':''), html:String(n), iconSize:[28,28]}), title:d.protocolo}).addTo(m); pts.push([p.lat, p.lng]); });
+ if(pts.length>1) m.fitBounds(L.latLngBounds(pts).pad(0.15)); else m.setView(pts[0], 13);
+}
 TELAS.planejar.ligar = function(){
+ if(typeof LARGO==='function' && LARGO()) desenharMapaPlano();
  const pp=$('#plParceiro'); if(pp) pp.onchange=e=>{ const p=e.target.value; PLAN.sel=PLAN.sel||new Set(); cfg.duplaHoje={dia:hojeIso(), parceiro:p}; gravarCfg();
   const {equipe}=demandasDoPlano(); equipe.forEach(d=>{ const id=idDemanda(d); if(doParceiro(d,p) && pontoDe(d) && d.situacao!=='em_andamento') PLAN.sel.add(id); else if(!doParceiro(d,p)) PLAN.sel.delete(id); }); mostrar(true); };
  $$('[data-aba-plan]').forEach(b=>b.onclick=()=>{ PLAN.aba=b.dataset.abaPlan; PLAN.bairro=''; mostrar(true); });
@@ -268,7 +286,7 @@ TELAS.parada = function(){
  if(!p) return topo('Próxima parada', {voltar:true})+'<main class="pag centro"><div class="grande-ok">'+ic('ok')+'</div><h2>Todas as paradas resolvidas</h2><p class="ajuda"><span>Volta à FUNAT prevista às '+horaMin(it.retorno)+'.</span></p><button class="bt pri largo" data-ir="#resumo">Resumo do dia</button><button class="bt txt largo" data-ir="#itinerario">Marcou algo por engano? Ver o itinerário</button></main>';
  const k=it.paradas.indexOf(p), resto=it.paradas.slice(k).filter(x=>x.status==='pendente'||x.status==='agora'), kmResto=resto.reduce((a,x)=>a+((x.trecho||{}).dist||0),0)+it.volta.dist;
  const d=!p.doColega && ((DEMANDAS && DEMANDAS.itens)||[]).find(x=>idDemanda(x)===p.id), v=d && vistoriaDe(d);
- return topo('Próxima parada', {voltar:true, direita:chipEnvio()})+'<main class="pag">'+
+ return topo('Próxima parada', {voltar:true, direita:chipEnvio()})+'<main class="pag"><div class="duas-col parada"><div class="col-a">'+
   '<section class="bloco it-progresso"><div class="it-prog"><b>'+ic('pino')+'Parada '+(k+1)+' de '+n+'</b><span>faltam '+resto.length+' · ~'+esc(kmTxt(kmResto))+'</span></div><div class="at-barra"><i style="width:'+Math.round(feitas*100/n)+'%"></i></div></section>'+
   '<section class="bloco it-agora">'+(p.doColega? '<div class="it-resp">'+ic('pessoa')+'<div><b>Responsável: '+esc(nomeFiscal(p.fiscal))+'</b><small>Demanda da dupla</small></div></div>' : '')+
    '<p class="it-prot">'+esc(p.protocolo)+'</p><p class="rot-p">Motivo da vistoria</p><h2>'+esc(p.assunto||'—')+'</h2>'+
@@ -280,10 +298,11 @@ TELAS.parada = function(){
    '<div class="it-bts sec">'+(p.doColega? '<button class="bt sec" id="paFeita">'+ic('ok')+'Feita pelo '+esc(nomeFiscal(p.fiscal))+'</button>' : '')+'<button class="bt sec" id="paNao">'+ic('fechar')+'Não foi possível</button><button class="bt sec" id="paDepois">Pular para depois</button></div></section>'+
   '<section class="bloco"><h2>Todas as paradas</h2><ol class="it-lista">'+it.paradas.map((x,i)=>'<li class="st-'+(x===p? 'agora' : x.status)+'"><span class="it-num">'+(x.status==='feita'? ic('ok') : x.status==='nao_foi'? ic('fechar') : i+1)+'</span><div><b>'+esc(x.protocolo)+' · '+esc(x.assunto)+'</b><small>'+esc(bairroDe(x.endereco)||x.endereco||'')+' ('+esc(nomeFiscal(x.fiscal))+')'+(x.status==='feita' && x.em? ' · concluída às '+esc(horaDe(x.em)) : x.status==='nao_foi'? ' · '+esc(x.motivo) : x===p? ' · agora' : '')+'</small></div>'+(x!==p && podeDesfazer(x)? '<button class="bt txt mini-bt" data-desfazer="'+i+'">Desfazer</button>' : '')+'</li>').join('')+'</ol>'+
    '<p class="it-prog"><span>'+ic('relogio')+'Retorno previsto</span><b>FUNAT às '+horaMin(it.retorno)+'</b></p></section>'+
-  '<div class="it-extra"><button class="bt claro largo" data-ir="#itinerario">'+ic('rota')+'Ver ou mudar o itinerário</button><button class="bt txt perigo largo" id="paCancelar">'+ic('lixo')+'Cancelar o itinerário de hoje</button></div></main>';
+  '<div class="it-extra"><button class="bt claro largo" data-ir="#itinerario">'+ic('rota')+'Ver ou mudar o itinerário</button><button class="bt txt perigo largo" id="paCancelar">'+ic('lixo')+'Cancelar o itinerário de hoje</button></div></div><aside class="col-b so-largo"><div id="mapaParada" class="it-mapa lado alto" role="img" aria-label="Mapa da rota"></div></aside></div></main>';
 };
 TELAS.parada.ligar = function(){
  const it=itinerarioDeHoje(); if(!it) return; const p=paradaAtual(it); if(!p) return;
+ if(typeof LARGO==='function' && LARGO()) desenharMapa(it, 'mapaParada');
  const marcar=async(st, motivo)=>{ p.status=st; p.motivo=motivo||''; p.em=new Date().toISOString(); await gravarItinerario(); mostrar(); window.scrollTo(0,0); };
  $('#paNavegar').onclick=()=>p.ponto? Aparelho.abrirUrl('https://www.google.com/maps/dir/?api=1&destination='+p.ponto.lat.toFixed(6)+','+p.ponto.lng.toFixed(6)+'&travelmode=driving') : Aparelho.abrirEndereco((p.endereco||'')+', Tubarão - SC');
  const ini=$('#paIniciar'); if(ini) ini.onclick=async()=>{ const antes=p.status; p.status='agora'; await gravarItinerario();

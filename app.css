@@ -482,3 +482,24 @@ button.resumo-docs{width:100%;border:0;font:inherit;text-align:left;cursor:point
  .duas-col.vist{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)}
  .duas-col.vist .minis{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
+/* ===== 0.9.8: listas com detalhe ao lado (tablet deitado) e uso sem internet ===== */
+.so-largo{display:none}
+.faixa.semrede{background:#e3f1fd;color:#00426a}
+.faixa.cheio{background:var(--ambar-claro);color:#5c4100}
+.boa{color:var(--ok)}.ruim{color:var(--erro)}
+@media (min-width:1000px){
+ .so-largo{display:block}
+ .duas-col.lista-det,.duas-col.parada,.duas-col.plano{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)}
+ .duas-col.docs{grid-template-columns:minmax(0,.9fr) minmax(0,1.2fr)}
+ .duas-col>.col-b.so-largo{position:sticky;top:calc(var(--topo-h) + 16px);max-height:calc(100vh - var(--topo-h) - 32px);overflow:auto}
+ .duas-col.plano>.col-b.so-largo{max-height:calc(100vh - var(--topo-h) - 130px)}
+ .it-mapa.lado{height:300px;border-radius:var(--raio);margin-bottom:14px;box-shadow:var(--sombra)}
+ .it-mapa.lado.alto{height:calc(100vh - var(--topo-h) - 200px);min-height:360px}
+ .duas-col.plano .it-mapa.lado.alto{height:calc(100vh - var(--topo-h) - 330px)}
+ .lado-detalhe .cartao{margin-bottom:12px}
+ #vLista .cartao[data-sel]{cursor:pointer}
+ .cartao.sel{box-shadow:0 0 0 2px var(--azul-sec),var(--sombra)}
+ .doc-lado>.bloco:first-child{margin-top:0}
+ .it-grande{font-size:17px;margin:4px 0 8px}
+ .duas-col .col-a>.busca:first-child{margin-top:0}
+}
