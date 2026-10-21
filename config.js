@@ -1,1 +1,1 @@
-const CONFIG_APP = {"urlPlanilha": "https://script.google.com/macros/s/AKfycbzTj603A6LcXg7UPPMaCgZbFjqanSRDos3NBJ25gxZA3V9EwrNx5sjRkD8iCTVtmf1Z/exec", "modo": "web", "build": "4b3609d4d892"};
+const CONFIG_APP = {"urlPlanilha": "https://script.google.com/macros/s/AKfycbzTj603A6LcXg7UPPMaCgZbFjqanSRDos3NBJ25gxZA3V9EwrNx5sjRkD8iCTVtmf1Z/exec", "urlArmazenamento": "https://script.google.com/macros/s/AKfycbzkL0Z8zjOmCjfpxVSa5XptY5d0cbfSblGNW3TdX0owmYB7e7hTNlxHWTMM8xWflSvp/exec", "modo": "web", "build": "2fac797db444"};

@@ -2,8 +2,8 @@
    Rotas pelo endereço (#inicio, #vistorias, #nova, #v/<id>, #foto/<id>/<n>, #envios, #pronta/<id>, #config).
    Cada vistoria fica em vistorias/<id>.json e as fotos em fotos/<id>/<foto>.jpg, na memória interna do app. */
 
-const VERSAO_APP = '0.9.8 (piloto 13)';
-const CODIGO_APP = 22;              // sobe a cada APK: o Android só instala por cima versão com código maior
+const VERSAO_APP = '0.9.9 (piloto 14)';
+const CODIGO_APP = 23;              // sobe a cada APK: o Android só instala por cima versão com código maior
 let VIST = [];                       // vistorias carregadas
 let cfg = lerCfg();
 
@@ -82,7 +82,7 @@ function tagTipo(t){ const d=TIPOS_DOC[t]||TIPOS_DOC.relatorio; return '<span cl
 function rotuloStatus(v){
  if(v.status==='a_vistoriar') return (ehRetorno(v)? numeroVisita(v)+'ª visita ainda não feita' : 'Ainda não vistoriada')+' · criada '+quandoRelativo(v.criadaEm);
  if(v.status==='em_andamento') return 'Em andamento · '+v.fotos.length+' foto'+(v.fotos.length===1?'':'s')+' · editada '+quandoRelativo(v.editadaEm);
- return v.precisaEnviar? 'Concluída · na fila para a pasta da FUNAT' : v.enviadaEm? 'Concluída · enviada para a pasta '+quandoRelativo(v.enviadaEm) : v.exportadaEm? 'Concluída · arquivo exportado '+quandoRelativo(v.exportadaEm) : 'Concluída';
+ return v.precisaEnviar? (MODO_WEB||!cfg.pasta? 'Concluída · na fila para enviar' : 'Concluída · na fila para a pasta da FUNAT') : v.enviadaPor==='nuvem'? (v.recebidaEm? 'Concluída · recebida no computador '+quandoRelativo(v.recebidaEm) : 'Concluída · enviada pela internet '+quandoRelativo(v.enviadaEm)) : v.enviadaEm? 'Concluída · enviada para a pasta '+quandoRelativo(v.enviadaEm) : v.exportadaEm? 'Concluída · arquivo exportado '+quandoRelativo(v.exportadaEm) : 'Concluída';
 }
 function tagVisita(v){ return ehRetorno(v)? '<span class="tag t-visita">'+numeroVisita(v)+'ª VISITA</span>' : ''; }
 function cartao(v){
@@ -196,11 +196,11 @@ const assinaturaDados=v=>JSON.stringify([v.tipoDocumento, v.expedienteTipo, v.ex
 TELAS.editar.ligar = function(id){ ligarSeg(); $('#eOk').onclick=async()=>{
  const v=acharVistoria(id), antes=assinaturaDados(v); lerFormDados(v);
  if(v.status==='concluida' && assinaturaDados(v)!==antes){
-  if(v.enviadaEm && !confirm(MODO_WEB? 'Esta vistoria já foi exportada. Salvar as mudanças e exportar de novo? No app Arquivos, escolha “Substituir”.' : 'Esta vistoria já está na pasta da FUNAT. Salvar e enviar de novo, por cima do arquivo de lá?\n\nSe ela já foi aberta e alterada no computador, o app recusa e avisa.')){
+  if(v.enviadaEm && !confirm(v.enviadaPor==='nuvem'? 'Esta vistoria já foi enviada pela internet. Salvar as mudanças e enviar de novo? A versão nova substitui a anterior na sua pasta VISTORIAS.' : MODO_WEB? 'Esta vistoria já foi exportada. Salvar as mudanças e exportar de novo? No app Arquivos, escolha “Substituir”.' : 'Esta vistoria já está na pasta da FUNAT. Salvar e enviar de novo, por cima do arquivo de lá?\n\nSe ela já foi aberta e alterada no computador, o app recusa e avisa.')){
    [v.tipoDocumento, v.expedienteTipo, v.expedienteNum, v.assunto, v.endereco, v.bairro, v.autuado]=JSON.parse(antes); return; }
   v.precisaEnviar=true; v.erroEnvio='';
  }
- await gravarVistoria(v); history.back(); if(v.precisaEnviar && cfg.pasta) enviarPendentes({silencioso:true}); }; };
+ await gravarVistoria(v); history.back(); if(v.precisaEnviar && podeEnviar()) enviarPendentes({silencioso:true}); }; };
 
 /* ---------- a vistoria ---------- */
 function blocoLocal(v){
@@ -264,7 +264,7 @@ TELAS.v.ligar = function(id){
  if($('#vSalvar')) $('#vSalvar').onclick=async()=>{ await gravarAgora(); await gravarVistoria(v); aviso('Rascunho salvo neste aparelho.'); };
  if($('#vConcluir')) $('#vConcluir').onclick=()=>concluir(v);
  if($('#vReabrir')) $('#vReabrir').onclick=async()=>{
-  if(v.enviadaEm && !confirm('Esta vistoria já foi enviada para a pasta ('+v.arquivoRemoto+').\n\nAo concluir de novo, o app grava por cima desse arquivo. Se ela já foi aberta e alterada no computador, essas alterações se perdem.\n\nReabrir mesmo assim?')) return;
+  if(v.enviadaEm && !confirm((v.enviadaPor==='nuvem'? 'Esta vistoria já foi enviada pela internet.' : 'Esta vistoria já foi enviada para a pasta ('+v.arquivoRemoto+').')+'\n\nAo concluir de novo, o app grava por cima desse arquivo. Se ela já foi aberta e alterada no computador, essas alterações se perdem.\n\nReabrir mesmo assim?')) return;
   v.status='em_andamento'; v.concluidaEm=''; v.precisaEnviar=false; await gravarVistoria(v); mostrar(true); };
 };
 
@@ -336,25 +336,28 @@ async function concluir(v){
  if(p.avisa.length && !confirm('Antes de concluir, confira:\n\n• '+p.avisa.join('\n• ')+'\n\nConcluir mesmo assim?')) return;
  v.status='concluida'; v.concluidaEm=new Date().toISOString(); v.precisaEnviar=true; v.erroEnvio=''; await gravarVistoria(v);
  history.replaceState(null, '', '#pronta/'+v.id); mostrar();
- if(cfg.pasta) enviarPendentes({silencioso:true});
+ if(podeEnviar()) enviarPendentes({silencioso:true});
 }
 
 /* ---------- vistoria concluída ---------- */
 function situacaoEnvio(v){
+ if(v.precisaEnviar && envioRodando && (MODO_WEB||temNuvem())) return {cls:'andando', txt:'Enviando…'};
+ if(v.enviadaPor==='nuvem' && !v.precisaEnviar) return v.recebidaEm? {cls:'ok', txt:'Enviada pela internet e gravada na sua pasta VISTORIAS '+quandoRelativo(v.recebidaEm)+'.'} : {cls:'ok', txt:'Enviada pela internet '+quandoRelativo(v.enviadaEm)+'. Chega à sua pasta VISTORIAS quando o Painel do Auxiliar for aberto no computador.'};
+ if(v.precisaEnviar && temNuvem() && (MODO_WEB || !cfg.pasta)) return {cls:'fila', txt: v.erroEnvio? 'Na fila: '+v.erroEnvio : 'Na fila: vai pela internet assim que houver sinal.'};
  if(MODO_WEB) return v.precisaEnviar? {cls:'fila', txt:'Falta exportar e salvar na pasta VISTORIAS (app Arquivos).'} : {cls:'ok', txt:'Exportada '+quandoRelativo(v.exportadaEm)+'. Confira se o arquivo está na sua pasta VISTORIAS.'};
  if(v.precisaEnviar && envioRodando) return {cls:'andando', txt:'Enviando para a pasta…'};
- if(v.precisaEnviar) return {cls:'fila', txt: v.erroEnvio? 'Na fila: '+v.erroEnvio : cfg.pasta? 'Na fila: vai quando o celular estiver no Wi-Fi da FUNAT.' : 'Na fila: configure a pasta da FUNAT em Meus dados.'};
+ if(v.precisaEnviar) return {cls:'fila', txt: v.erroEnvio? 'Na fila: '+v.erroEnvio : cfg.pasta? (temNuvem()? 'Na fila: vai no Wi-Fi da FUNAT ou, fora dela, pela internet.' : 'Na fila: vai quando o celular estiver no Wi-Fi da FUNAT.') : 'Na fila: configure a pasta da FUNAT em Meus dados.'};
  if(v.enviadaEm) return {cls:'ok', txt:'Enviada '+quandoRelativo(v.enviadaEm)+' para '+ultimaParte(v.arquivoRemoto.replace(/\\[^\\]*$/,''))+' › '+ultimaParte(v.arquivoRemoto)};
  return {cls:'', txt:'Não está na fila.'};
 }
 TELAS.pronta = function(id){ const v=acharVistoria(id); if(!v) return naoAchou(); const st=situacaoEnvio(v);
  return topo('Vistoria concluída', {direita:'<span></span>'})+'<main class="pag centro"><div class="grande-ok">'+ic('ok')+'</div><h2>Vistoria concluída</h2>'+
   '<p>'+esc(protocoloTexto(v))+' · '+v.fotos.length+' foto'+(v.fotos.length===1?'':'s')+' · '+esc(dataBrCampo(v.dataVistoria))+'</p>'+
-  '<div class="bloco esq envio-'+st.cls+'"><h3>'+ic(st.cls==='ok'?'ok':'enviar')+(st.cls==='ok'?'Na pasta da FUNAT':'Envio para a pasta')+'</h3><p class="ajuda">'+esc(st.txt)+'</p>'+
+  '<div class="bloco esq envio-'+st.cls+'"><h3>'+ic(st.cls==='ok'?'ok':'enviar')+(st.cls==='ok'? (v.enviadaPor==='nuvem'? 'Enviada pela internet' : 'Na pasta da FUNAT') : 'Envio')+'</h3><p class="ajuda">'+esc(st.txt)+'</p>'+
   (st.cls==='ok'? '<p class="ajuda">No computador, ela aparece no Painel do Auxiliar como documento em elaboração, pronto para continuar na ferramenta.</p>' : '')+'</div>'+
-  (MODO_WEB? '<button class="bt pri largo alto" data-exportar="'+v.id+'">'+ic('enviar')+(v.precisaEnviar? 'Exportar e salvar na pasta' : 'Exportar de novo')+'</button>' : '')+
-  (v.precisaEnviar && cfg.pasta? '<button class="bt pri largo alto" id="pEnviar">'+ic('enviar')+'Tentar enviar agora</button>' : '')+
-  (!cfg.pasta && !MODO_WEB? '<button class="bt pri largo alto" data-ir="#pasta">'+ic('enviar')+'Configurar a pasta</button>' : '')+
+  (MODO_WEB && !temNuvem()? '<button class="bt pri largo alto" data-exportar="'+v.id+'">'+ic('enviar')+(v.precisaEnviar? 'Exportar e salvar na pasta' : 'Exportar de novo')+'</button>' : '')+
+  (v.precisaEnviar && podeEnviar()? '<button class="bt pri largo alto" id="pEnviar">'+ic('enviar')+'Tentar enviar agora</button>' : '')+
+  (!cfg.pasta && !MODO_WEB && !temNuvem()? '<button class="bt pri largo alto" data-ir="#pasta">'+ic('enviar')+'Configurar a pasta</button>' : '')+
   blocoDocumentoRetorno(v, 'esq')+
   '<button class="bt sec largo" data-ir="#inicio">Voltar ao início</button></main>'; };
 TELAS.pronta.ligar = function(){ ligarDocumentoRetorno(); if($('#pEnviar')) $('#pEnviar').onclick=()=>enviarPendentes({}); $$('[data-exportar]').forEach(b=>b.onclick=()=>exportar(acharVistoria(b.dataset.exportar))); };
@@ -364,8 +367,8 @@ function chipEnvio(){
  if(bloqueadoParaEnviar()) return '<a class="chip-sinc conflito" href="#atualizar">'+ic('alerta')+'Atualize o app</a>';
  const n=pendentesEnvio(VIST).length+correcoesNaFila().length, nc=correcoesComConflito().length;
  if(nc) return '<a class="chip-sinc conflito" href="#envios">'+ic('alerta')+nc+' para decidir</a>';
- if(MODO_WEB) return n? '<a class="chip-sinc fila" href="#envios">'+ic('enviar')+n+' para exportar</a>' : '<a class="chip-sinc" href="#envios">'+ic('aparelho')+'Neste iPhone</a>';
- if(!cfg.pasta) return '<a class="chip-sinc" href="#pasta">'+ic('aparelho')+'Só neste aparelho</a>';
+ if(MODO_WEB && !temNuvem()) return n? '<a class="chip-sinc fila" href="#envios">'+ic('enviar')+n+' para exportar</a>' : '<a class="chip-sinc" href="#envios">'+ic('aparelho')+'Neste iPhone</a>';
+ if(!cfg.pasta && !temNuvem()) return '<a class="chip-sinc" href="#pasta">'+ic('aparelho')+'Só neste aparelho</a>';
  if(envioRodando) return '<a class="chip-sinc andando" href="#envios">'+ic('enviar')+'Enviando…</a>';
  if(n) return '<a class="chip-sinc fila" href="#envios">'+ic('enviar')+n+' na fila</a>';
  return '<a class="chip-sinc ok" href="#envios">'+ic('ok')+'Tudo enviado'+(cfg.ultimoEnvio? ' · '+horaCurta(new Date(cfg.ultimoEnvio)) : '')+'</a>';
@@ -381,16 +384,18 @@ function secaoCorrecoes(){
 TELAS.envios = function(){
  const c=ordenadas(VIST.filter(v=>v.status==='concluida')), fila=pendentesEnvio(VIST);
  return topo('Envios')+'<main class="pag com-nav">'+
-  (MODO_WEB? '<div class="bloco info">'+ic('pasta')+'<div><b>Salvar na pasta da FUNAT</b><p class="ajuda"><span>No Wi-Fi da FUNAT, toque em <b>Salvar '+(fila.length>1? 'as '+fila.length : '')+' na pasta</b> e escolha <b>Salvar em Arquivos</b> › sua pasta › <b>VISTORIAS</b>. Todas vão de uma vez; o iPhone lembra a última pasta usada.</span></p>'+
+  (temNuvem() && (MODO_WEB || !cfg.pasta)? '<div class="bloco info">'+ic('enviar')+'<div><b>Envio pela internet</b><p class="ajuda">As vistorias concluídas vão sozinhas, assim que houver sinal, e chegam à sua pasta VISTORIAS quando o Painel do Auxiliar é aberto no computador.'+(cfg.ultimoEnvio? ' Último envio: '+esc(quandoRelativo(new Date(cfg.ultimoEnvio).toISOString()))+'.' : '')+'</p>'+
+    '<button class="bt pri largo" id="eEnviar"'+(fila.length&&!envioRodando?'':' disabled')+'>'+ic('enviar')+(envioRodando? 'Enviando…' : fila.length? 'Enviar '+fila.length+' agora' : 'Nada na fila')+'</button></div></div>'
+   : MODO_WEB? '<div class="bloco info">'+ic('pasta')+'<div><b>Salvar na pasta da FUNAT</b><p class="ajuda"><span>No Wi-Fi da FUNAT, toque em <b>Salvar '+(fila.length>1? 'as '+fila.length : '')+' na pasta</b> e escolha <b>Salvar em Arquivos</b> › sua pasta › <b>VISTORIAS</b>. Todas vão de uma vez; o iPhone lembra a última pasta usada.</span></p>'+
     (fila.length? '<button class="bt pri largo alto" id="eLoteWeb">'+ic('enviar')+(fila.length>1? 'Salvar as '+fila.length+' na pasta' : 'Salvar na pasta')+'</button>' : '<p class="ajuda">'+ic('ok')+'<span>Nada falta salvar.</span></p>')+
     '<button class="bt claro largo" data-ir="#arquivos-ajuda">'+ic('lista')+'Como ligar o app Arquivos à pasta</button></div></div>'
-   : cfg.pasta? '<div class="bloco info">'+ic('enviar')+'<div><b>'+esc(cfg.pasta.nome)+' › VISTORIAS</b><p class="ajuda">As vistorias concluídas vão para essa pasta quando o celular está no Wi-Fi da FUNAT. '+(cfg.ultimoEnvio? 'Último envio: '+esc(quandoRelativo(new Date(cfg.ultimoEnvio).toISOString()))+'.' : '')+'</p>'+
+   : cfg.pasta? '<div class="bloco info">'+ic('enviar')+'<div><b>'+esc(cfg.pasta.nome)+' › VISTORIAS</b><p class="ajuda">As vistorias concluídas vão para essa pasta quando o celular está no Wi-Fi da FUNAT'+(temNuvem()? '; fora dela, vão pela internet' : '')+'. '+(cfg.ultimoEnvio? 'Último envio: '+esc(quandoRelativo(new Date(cfg.ultimoEnvio).toISOString()))+'.' : '')+'</p>'+
     '<button class="bt pri largo" id="eEnviar"'+(fila.length&&!envioRodando?'':' disabled')+'>'+ic('enviar')+(envioRodando? 'Enviando…' : fila.length? 'Enviar '+fila.length+' agora' : 'Nada na fila')+'</button></div></div>'
    : '<div class="bloco info">'+ic('aparelho')+'<div><b>Pasta da FUNAT não configurada</b><p class="ajuda">Configure o acesso para que as vistorias concluídas cheguem ao computador sozinhas.</p><button class="bt pri largo" data-ir="#pasta">Configurar agora</button></div></div>')+
   secaoCorrecoes()+
   '<h2 class="secao">Concluídas <span class="cont">'+c.length+'</span></h2>'+(c.length? c.map(v=>{ const st=situacaoEnvio(v); return '<article class="cartao st-concluida"><div class="c-l1">'+tagTipo(v.tipoDocumento)+'<b>'+esc(protocoloTexto(v))+'</b></div>'+
    (v.assunto?'<h3>'+esc(v.assunto)+'</h3>':'')+'<p class="st envio-'+st.cls+'">'+ic(st.cls==='ok'?'ok':st.cls==='fila'?'relogio':'enviar')+esc(st.txt)+'</p>'+
-   '<div class="c-ac">'+(MODO_WEB? '<button class="bt '+(v.precisaEnviar?'pri':'sec')+'" data-exportar="'+v.id+'">'+ic('enviar')+(v.precisaEnviar?'Exportar e salvar':'Exportar de novo')+'</button><button class="bt txt" data-ir="#v/'+v.id+'">Abrir</button>' : '<button class="bt txt" data-ir="#v/'+v.id+'">Abrir</button><button class="bt txt" data-exportar="'+v.id+'">'+ic('arquivo')+'Exportar arquivo</button>')+'</div></article>'; }).join('')
+   '<div class="c-ac">'+(MODO_WEB && !temNuvem()? '<button class="bt '+(v.precisaEnviar?'pri':'sec')+'" data-exportar="'+v.id+'">'+ic('enviar')+(v.precisaEnviar?'Exportar e salvar':'Exportar de novo')+'</button><button class="bt txt" data-ir="#v/'+v.id+'">Abrir</button>' : '<button class="bt txt" data-ir="#v/'+v.id+'">Abrir</button><button class="bt txt" data-exportar="'+v.id+'">'+ic('arquivo')+'Exportar arquivo</button>')+'</div></article>'; }).join('')
    : '<div class="vazio"><p>Nenhuma vistoria concluída ainda.</p></div>')+'</main>'+navInferior('#envios');
 };
 TELAS.envios.ligar = function(){
@@ -551,13 +556,20 @@ TELAS['arquivos-ajuda'] = function(){
    silencioso: tentativa automática (ao abrir o app, ao voltar para ele, ao concluir) – sem alertas. */
 let envioRodando=false;
 async function enviarPendentes(op){
- op=op||{}; if(envioRodando || !cfg.pasta) return;
- if(bloqueadoParaEnviar()){ if(!op.silencioso) aviso(MSG_ATUALIZAR, 6000); return; } const fila=pendentesEnvio(VIST);
- if(!fila.length){ await enviarCorrecoesNaFila(op); return; }
+ op=op||{}; if(envioRodando || !podeEnviar()) return;
+ if(bloqueadoParaEnviar()){ if(!op.silencioso) aviso(MSG_ATUALIZAR, 6000); return; }
+ if(!MODO_WEB && cfg.pasta) await ponteParaPasta();
+ const fila=pendentesEnvio(VIST);
+ if(!fila.length){ if(cfg.pasta && !MODO_WEB) await enviarCorrecoesNaFila(op); return; }
+ /* iPhone (ou Android sem a pasta): tudo pela internet. Vistoria que já foi pela internet continua indo por ela:
+    o Painel do Auxiliar grava por cima da mesma cópia em VISTORIAS (mesmo id), sem criar uma segunda. */
+ if(MODO_WEB || !cfg.pasta) return enviarPelaNuvem(fila, op);
+ const filaNuvem=temNuvem()? fila.filter(v=>v.enviadaPor==='nuvem') : [], filaSmb=fila.filter(v=>filaNuvem.indexOf(v)<0);
+ if(!filaSmb.length) return enviarPelaNuvem(filaNuvem, op);
  envioRodando=true; atualizarSemPerderFoco(); let ok=0, erro=null;
  const destino=caminhoSmb(cfg.pasta.caminho, 'VISTORIAS');
  try{
- for(const v of fila){
+ for(const v of filaSmb){
   try{
    await gravarAgora();
    /* Envio que se reconhece: o nome escolhido fica guardado ANTES de ir para a pasta. Se o app morrer ou a rede cair
@@ -581,11 +593,73 @@ async function enviarPendentes(op){
   }
  }
  }finally{ envioRodando=false; atualizarSemPerderFoco(); }
+ /* fora do Wi-Fi da FUNAT (sem a pasta), o que sobrou vai pela internet, se houver armazenamento */
+ if(erro && erro.code==='SEM_REDE' && temNuvem()){ if(ok && !op.silencioso) aviso(ok+' enviada(s) para a pasta.', 3000); return enviarPelaNuvem(pendentesEnvio(VIST), op); }
+ if(filaNuvem.length && !erro) await enviarPelaNuvem(filaNuvem, op);
  if(!op.silencioso){
   if(erro) alert((ok? ok+' enviada(s). ' : '')+'Não foi possível enviar: '+(erro.message||erro));
   else aviso(ok+' vistoria'+(ok>1?'s':'')+' enviada'+(ok>1?'s':'')+' para '+cfg.pasta.nome+' › VISTORIAS.', 4500);
  } else if(ok) aviso(ok+' vistoria'+(ok>1?'s':'')+' enviada'+(ok>1?'s':'')+' para a pasta da FUNAT.', 4500);
  if(!erro) await enviarCorrecoesNaFila(op);
+}
+/* Envio pela internet: a vistoria vai para a caixa de entrada do armazenamento (Google Drive) e o Painel do Auxiliar,
+   no computador, a grava na pasta VISTORIAS. Uma de cada vez; para na primeira falha de rede. */
+async function enviarPelaNuvem(fila, op){
+ op=op||{}; fila=(fila||[]).filter(Boolean); if(envioRodando || !fila.length || !temNuvem()) return;
+ const chave=await Planilha.chave();
+ if(!chave){ if(!op.silencioso) alert('Falta a chave em Meus dados › Demandas da planilha: é ela que identifica você no envio pela internet.'); return; }
+ envioRodando=true; atualizarSemPerderFoco(); let ok=0, erro=null;
+ try{
+  for(const v of fila){
+   try{
+    await gravarAgora();
+    const nome=nomeArquivoVistoria(v), txt=await montarDocumento(v);
+    const r=await Nuvem.enviar(urlArmazenamento(), chave, {id:'campo-'+v.id, nome:nome, conteudo:txt, origem:MODO_WEB? 'web' : 'android'});
+    const agora=new Date().toISOString();
+    v.precisaEnviar=false; v.enviadaEm=agora; v.enviadaPor='nuvem'; v.nuvemEm=r.recebidoEm||agora; v.nuvemArquivo=r.arquivo||''; v.recebidaEm=''; v.erroEnvio=''; if(MODO_WEB) v.exportadaEm=''; await gravarVistoria(v); ok++;
+    cfg.ultimoEnvio=Date.now(); gravarCfg();
+   }catch(e){
+    erro=e; v.erroEnvio=e.code==='SEM_REDE'? '' : (e.message||String(e)); await gravarVistoria(v);
+    if(['SEM_REDE','CHAVE','SEM_CONFIG','OCUPADO','RESPOSTA'].includes(e.code)) break;
+   }
+  }
+ }finally{ envioRodando=false; atualizarSemPerderFoco(); }
+ if(!op.silencioso){
+  if(erro) alert((ok? ok+' enviada(s). ' : '')+(erro.code==='SEM_REDE'? 'Sem internet agora: as outras vão quando houver sinal.' : 'Não foi possível enviar: '+(erro.message||erro)));
+  else aviso(ok+' vistoria'+(ok>1?'s':'')+' enviada'+(ok>1?'s':'')+' pela internet. Chega'+(ok>1?'m':'')+' à sua pasta quando o Painel do Auxiliar for aberto.', 5000);
+ } else if(ok) aviso(ok+' vistoria'+(ok>1?'s':'')+' enviada'+(ok>1?'s':'')+' pela internet.', 4500);
+}
+/* Android de volta ao Wi-Fi da FUNAT: a vistoria que foi pela internet e que o computador ainda não recebeu vai para a
+   pasta pelo caminho de sempre, sem depender do Painel do Auxiliar. Primeiro sai da caixa do Drive (para o painel não
+   gravar depois uma versão por cima), depois volta para a fila da pasta, com o mesmo nome de arquivo que o painel usaria:
+   se o painel tiver acabado de gravar, o envio grava por cima do mesmo caso (mesmo id), sem criar "(2)". */
+async function ponteParaPasta(){
+ if(MODO_WEB || !cfg.pasta || !temNuvem()) return 0;
+ const esperando=VIST.filter(v=>v.enviadaPor==='nuvem' && !v.recebidaEm && !v.precisaEnviar); if(!esperando.length) return 0;
+ try{ await Pasta.existe(caminhoSmb(cfg.pasta.caminho, 'VISTORIAS')); }catch(e){ return 0; }   // a pasta não responde: fora da FUNAT
+ const chave=await Planilha.chave(); if(!chave) return 0;
+ let sit; try{ sit=(await Nuvem.situacao(urlArmazenamento(), chave, esperando.map(v=>'campo-'+v.id))).situacao||{}; }catch(e){ return 0; }
+ let n=0;
+ for(const v of esperando){
+  const x=sit['campo-'+v.id]||{};
+  if(x.estado==='recebida'){ v.recebidaEm=x.em||new Date().toISOString(); await gravarVistoria(v); continue; }
+  if(x.estado==='na_caixa'){
+   if(!v.nuvemArquivo) continue;                                         // sem o arquivo da caixa: fica para o painel
+   try{ await Nuvem.pedir(urlArmazenamento(), {acao:'confirmar', chave:chave, arquivo:v.nuvemArquivo, id:'campo-'+v.id, destino:'gravada pelo celular no Wi-Fi da FUNAT'}); }catch(e){ continue; }
+  }
+  v.enviadaPor=''; v.nuvemArquivo=''; v.precisaEnviar=true; v.envioNome=v.envioNome||nomeArquivoVistoria(v); await gravarVistoria(v); n++;
+ }
+ return n;
+}
+/* Pergunta ao armazenamento se as vistorias enviadas pela internet já foram gravadas na pasta pelo computador */
+async function conferirRecebidas(){
+ if(!temNuvem() || envioRodando) return;
+ const esperando=VIST.filter(v=>v.enviadaPor==='nuvem' && !v.recebidaEm && !v.precisaEnviar); if(!esperando.length) return;
+ const chave=await Planilha.chave(); if(!chave) return;
+ let r; try{ r=await Nuvem.situacao(urlArmazenamento(), chave, esperando.map(v=>'campo-'+v.id)); }catch(e){ return; }
+ let mudou=0;
+ for(const v of esperando){ const x=(r.situacao||{})['campo-'+v.id]; if(x && x.estado==='recebida'){ v.recebidaEm=x.em||new Date().toISOString(); await gravarVistoria(v); mudou++; } }
+ if(mudou && ['envios','inicio','vistorias','pronta','v'].includes(rotaAtual().nome)) atualizarSemPerderFoco();
 }
 /* Correções feitas sem rede: vão quando a pasta responde. Conflito não vai: espera a escolha do auxiliar. */
 async function enviarCorrecoesNaFila(op){
@@ -704,8 +778,9 @@ async function atualizarDocumentos(p, op){
  op=op||{}; if(!p || docsLendo) return; docsLendo=true; docsErro=''; atualizarSemPerderFoco();
  try{
   const cache=await cacheDocs(); const c=cache[p.caminho]||(cache[p.caminho]={lidoEm:0, arquivos:{}});
+  /* TESES\: banco de teses publicado pelo revisor – não é documento */
   /* EXCLUIDOS\: documentos excluídos nos painéis do computador (lixeira) – não aparecem no app */
-  const lista=(await Pasta.listarJson(p.caminho, 2)).filter(a=>!/(^|[\\/])EXCLU[IÍ]\u0301?DOS[\\/]/i.test(a.caminho)), vistos=new Set(), mudou=[];
+  const lista=(await Pasta.listarJson(p.caminho, 2)).filter(a=>!/(^|[\\/])EXCLU[IÍ]\u0301?DOS[\\/]/i.test(a.caminho) && !/(^|[\\/])(BANCO DE )?TESES[\\/]/i.test(a.caminho)), vistos=new Set(), mudou=[];
   const propria=!cfg.pastaConsulta && cfg.pasta && p.caminho===cfg.pasta.caminho;
   lista.forEach(a=>{ vistos.add(a.caminho); const v=c.arquivos[a.caminho];
    if(!v || v.modificado!==a.modificado || v.tamanho!==a.tamanho || (propria && v.resumo && v.resumo.status==='devolvido' && !v.offline)) mudou.push(a); });
@@ -806,6 +881,10 @@ function corpoDoc(d){
    sem internet. Uma demanda some de "Para vistoriar" quando ganha vistoria no app ou "Fiscalizado" na planilha. */
 let DEMANDAS = null, demLendo = false, demErro = '';
 function urlPlanilha(){ return cfg.urlPlanilha || (typeof CONFIG_APP!=='undefined' && CONFIG_APP.urlPlanilha) || ''; }
+/* Armazenamento pela internet (script "FUNAT – armazenamento"): no iPhone é o envio; no Android, quando o celular não está no Wi-Fi da FUNAT */
+function urlArmazenamento(){ return cfg.urlArmazenamento || (typeof CONFIG_APP!=='undefined' && CONFIG_APP.urlArmazenamento) || ''; }
+function temNuvem(){ return !!urlArmazenamento(); }
+function podeEnviar(){ return (!!cfg.pasta && !MODO_WEB) || temNuvem(); }
 async function carregarDemandas(){ if(!DEMANDAS){ try{ DEMANDAS=JSON.parse(await Arquivos.lerTexto('demandas.json')); }catch(e){ DEMANDAS={lidoEm:0, fiscal:'', itens:[]}; } } return DEMANDAS; }
 async function atualizarDemandas(op){
  op=op||{}; if(demLendo || !cfg.planilhaAtiva) return; demLendo=true; demErro=''; atualizarSemPerderFoco();
@@ -982,7 +1061,7 @@ async function trocarTipoDocumento(v){
   '<button class="bt txt largo" data-f="">Cancelar</button>');
  if(!novo || !mudarTipoDocumento(v, novo)) return false;
  await gravarVistoria(v); mostrar(true); aviso('Documento: '+TIPOS_DOC[novo].rotulo+'.'+(jaFoi? (MODO_WEB? ' Exporte de novo para a pasta.' : cfg.pasta? ' Vai de novo para a pasta.' : '') : ''), 4500);
- if(v.precisaEnviar && cfg.pasta && !MODO_WEB) enviarPendentes({silencioso:true});
+ if(v.precisaEnviar && podeEnviar()) enviarPendentes({silencioso:true});
  return true;
 }
 /* Documento e retorno, na vistoria concluída e na tela de "concluída" */
@@ -1009,10 +1088,11 @@ TELAS.planilha = function(){
   '<section class="bloco"><h2>Chave deste aparelho</h2><p class="ajuda">Peça ao Julio a chave do seu nome. Ela permite ao app ler, na Planilha Fiscalização, só as demandas abertas distribuídas para você. A chave fica cifrada no cofre do Android.</p>'+
   '<label class="campo"><span>Chave</span><input id="plChave" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="19" class="chave"></label>'+
   '<details class="mais-op"'+(urlPlanilha()?'':' open')+'><summary>Endereço do script</summary><label class="campo"><span>URL do aplicativo da web</span><input id="plUrl" autocapitalize="none" spellcheck="false" value="'+esc(urlPlanilha())+'" placeholder="https://script.google.com/macros/s/…/exec"></label></details>'+
+  '<details class="mais-op"><summary>Envio pela internet (armazenamento)</summary><p class="ajuda">Com este endereço, '+(MODO_WEB? 'as vistorias vão pela internet' : 'fora do Wi-Fi da FUNAT as vistorias vão pela internet')+' e o Painel do Auxiliar as grava na sua pasta. Usa a mesma chave.</p><label class="campo"><span>URL do armazenamento</span><input id="plArmaz" autocapitalize="none" spellcheck="false" value="'+esc(urlArmazenamento())+'" placeholder="https://script.google.com/macros/s/…/exec"></label></details>'+
   '<button class="bt pri largo" id="plTestar">'+ic('ok')+'Testar e guardar</button></section>'+
   (cfg.planilhaAtiva? '<section class="bloco"><h2>Situação</h2><p class="ajuda">'+(DEMANDAS&&DEMANDAS.fiscal? 'Chave de <b>'+esc(DEMANDAS.fiscal)+'</b> · ' : '')+((DEMANDAS&&DEMANDAS.itens.length)||0)+' demandas em aberto na última leitura.</p>'+linhaPlanilha()+
    '<button class="bt txt perigo apagar-v" id="plDesligar">'+ic('lixo')+'Desligar as demandas da planilha neste aparelho</button></section>' : '')+
-  '<p class="ajuda">'+ic('alerta')+'O celular só lê. Nada é escrito na planilha nesta versão.</p></main>';
+  '<p class="ajuda">'+ic('alerta')+'O celular só lê a planilha: nada é escrito nela. O envio pela internet vai para o armazenamento da FUNAT, não para a planilha.</p></main>';
 };
 TELAS.planilha.ligar = function(){
  const k=$('#plChave'); Planilha.chave().then(c=>{ if(c && !k.value) k.placeholder='(guardada – digite só para trocar)'; });
@@ -1021,6 +1101,9 @@ TELAS.planilha.ligar = function(){
   const url=$('#plUrl').value.trim(), chave=k.value.trim()||await Planilha.chave();
   if(!/^https:\/\/script\.google(usercontent)?\.com\//.test(url) && url!=='simulado'){ alert('O endereço precisa ser o do script publicado (começa com https://script.google.com/macros/s/…).'); return; }
   if(!/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(chave)){ alert('A chave tem 16 letras e números, no formato XXXX-XXXX-XXXX-XXXX.'); return; }
+  const armaz=$('#plArmaz')? $('#plArmaz').value.trim() : urlArmazenamento();
+  if(armaz && !/^https:\/\/script\.google(usercontent)?\.com\//.test(armaz) && !/^http:\/\/localhost[:/]/.test(armaz)){ alert('O endereço do armazenamento precisa ser o do script publicado (https://script.google.com/macros/s/…).'); return; }
+  cfg.urlArmazenamento=(typeof CONFIG_APP!=='undefined' && (CONFIG_APP.urlArmazenamento||'')===armaz)? '' : armaz; gravarCfg();
   ocupado('Consultando a planilha…');
   try{ const r=await Planilha.buscar(url, chave); await Planilha.guardarChave(chave); cfg.urlPlanilha=(typeof CONFIG_APP!=='undefined' && CONFIG_APP.urlPlanilha===url)? '' : url; cfg.planilhaAtiva=true; gravarCfg();
    DEMANDAS={lidoEm:Date.now(), fiscal:r.fiscal, itens:r.demandas||[], equipe:r.equipe||null, base:r.base||null, versaoScript:r.versaoScript||''}; await Arquivos.gravarTexto('demandas.json', JSON.stringify(DEMANDAS)); ocupado(false);
@@ -1379,7 +1462,7 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden) gravarAg
 Aparelho.aoVoltar(()=>voltar());
 aoVoltarParaOApp(async()=>{
  if(rotaAtual().nome==='atualizar' && ATU.permissao===false){ ATU.permissao=await Pasta.podeInstalar().catch(()=>false); if(ATU.permissao) baixarEInstalar(); }
- await enviarPendentes({silencioso:true}); conferirAtualizacao(); if(cfg.planilhaAtiva && DEMANDAS && Date.now()-(DEMANDAS.lidoEm||0)>5*60e3) atualizarDemandas({silencioso:true}); const p=pastaDocs(); if(p && Date.now()-lidoEmDe(p)>5*60e3) atualizarDocumentos(p, {silencioso:true}); });
+ await enviarPendentes({silencioso:true}); conferirRecebidas(); conferirAtualizacao(); if(cfg.planilhaAtiva && DEMANDAS && Date.now()-(DEMANDAS.lidoEm||0)>5*60e3) atualizarDemandas({silencioso:true}); const p=pastaDocs(); if(p && Date.now()-lidoEmDe(p)>5*60e3) atualizarDocumentos(p, {silencioso:true}); });
 
 (async function iniciar(){
  if(document.readyState==='loading') await new Promise(r=>document.addEventListener('DOMContentLoaded', r, {once:true}));   /* itinerario.js vem depois deste arquivo */
@@ -1389,7 +1472,7 @@ aoVoltarParaOApp(async()=>{
  try{ await carregarRascunhos(); }catch(e){ console.error(e); }
  mostrar(); iniciarAtualizacaoWeb(); conferirUsoOffline().then(()=>{ if(['inicio','config'].includes(rotaAtual().nome)) mostrar(true); });
  if(!MODO_WEB && !atualizacaoDisponivel()) Pasta.apagarAtualizacao().catch(()=>{});   /* sobra de uma atualização já instalada */
- await enviarPendentes({silencioso:true}); conferirAtualizacao();
+ await enviarPendentes({silencioso:true}); conferirRecebidas(); conferirAtualizacao();
  await cacheDocs(); await carregarDemandas(); if(['inicio','vistorias','planejar','itinerario','parada','resumo'].includes(rotaAtual().nome)) mostrar(true);
  if(cfg.planilhaAtiva && Date.now()-(DEMANDAS.lidoEm||0)>5*60e3) atualizarDemandas({silencioso:true});
  if(cfg.pasta && Date.now()-lidoEmDe(cfg.pasta)>5*60e3) atualizarDocumentos(cfg.pasta, {silencioso:true});

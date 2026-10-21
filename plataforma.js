@@ -307,6 +307,24 @@ const Planilha = {
   return o;
  }
 };
+/* Armazenamento pela internet (script "FUNAT – armazenamento", Google Drive): caixa de entrada das vistorias.
+   POST com corpo text/plain (sem pré-consulta CORS), como o Painel do Gestor; serve no iPhone e no Android. */
+const Nuvem = {
+ async pedir(url, corpo){
+  if(!url) throw Object.assign(new Error('O endereço do armazenamento não está configurado.'), {code:'SEM_CONFIG'});
+  if(typeof navigator!=='undefined' && navigator.onLine===false) throw Object.assign(new Error('Sem internet agora.'), {code:'SEM_REDE'});
+  let r;
+  try{ r=await fetch(url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(corpo), redirect:'follow'}); }
+  catch(e){ throw Object.assign(new Error('Sem internet agora.'), {code:'SEM_REDE'}); }
+  if(!r.ok) throw Object.assign(new Error('O armazenamento respondeu HTTP '+r.status+'.'), {code:r.status>=500? 'SEM_REDE' : 'RESPOSTA'});
+  let o; try{ o=await r.json(); }catch(e){ throw Object.assign(new Error('O armazenamento respondeu algo inesperado. Confira o endereço em Meus dados › Demandas da planilha.'), {code:'RESPOSTA'}); }
+  if(o && o.erro==='ocupado') throw Object.assign(new Error(o.mensagem||'O armazenamento está ocupado.'), {code:'OCUPADO'});
+  if(!o || !o.ok) throw Object.assign(new Error(o && o.erro==='chave'? 'Chave recusada pelo armazenamento (errada ou desativada).' : ((o&&o.mensagem)||'Erro no armazenamento.')), {code:o&&o.erro==='chave'? 'CHAVE' : String((o&&o.erro)||'SCRIPT').toUpperCase()});
+  return o;
+ },
+ enviar(url, chave, dados){ return this.pedir(url, Object.assign({acao:'enviar', chave:chave}, dados)); },
+ situacao(url, chave, ids){ return this.pedir(url, {acao:'situacao', chave:chave, ids:ids}); }
+};
 function demandasSimuladas(chave){
  if(!/^[A-Z0-9]{4}(-?[A-Z0-9]{4}){3}$/i.test(chave)) throw Object.assign(new Error('Chave recusada pela planilha (errada ou desativada).'), {code:'CHAVE'});
  const r={ok:true, fiscal:'FELISBERTO', versaoScript:'49.0', geradoEm:new Date().toISOString(), demandas:[

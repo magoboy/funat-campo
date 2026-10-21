@@ -35,6 +35,7 @@ function novaVistoria(o){
   ruido:{usar:o.tipoDocumento==='termo_ruido', meteorologia:'', medicoes:[]},
   concluidaEm:'', exportadaEm:'',
   precisaEnviar:false, enviadaEm:'', arquivoRemoto:'', erroEnvio:'',  // envio para a pasta da FUNAT
+  enviadaPor:'', nuvemEm:'', nuvemArquivo:'', recebidaEm:'',         // envio pela internet (caixa de entrada do armazenamento)
   visita:1, retornoDe:'', motivoRetorno:'', anterior:null,           // retorno ao local: 2ª visita em diante (as antigas valem como visita 1)
   voltarEm:''                                                         // data combinada para voltar (opcional, só lembrete no aparelho)
  };
