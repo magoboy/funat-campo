@@ -2,8 +2,8 @@
    Rotas pelo endereço (#inicio, #vistorias, #nova, #v/<id>, #foto/<id>/<n>, #envios, #pronta/<id>, #config).
    Cada vistoria fica em vistorias/<id>.json e as fotos em fotos/<id>/<foto>.jpg, na memória interna do app. */
 
-const VERSAO_APP = '0.9.9 (piloto 14)';
-const CODIGO_APP = 23;              // sobe a cada APK: o Android só instala por cima versão com código maior
+const VERSAO_APP = '0.9.10 (piloto 15)';
+const CODIGO_APP = 24;              // sobe a cada APK: o Android só instala por cima versão com código maior
 let VIST = [];                       // vistorias carregadas
 let cfg = lerCfg();
 
@@ -890,7 +890,7 @@ async function atualizarDemandas(op){
  op=op||{}; if(demLendo || !cfg.planilhaAtiva) return; demLendo=true; demErro=''; atualizarSemPerderFoco();
  try{
   const r=await Planilha.buscar(urlPlanilha(), await Planilha.chave());
-  DEMANDAS={lidoEm:Date.now(), fiscal:r.fiscal, itens:r.demandas||[], equipe:r.equipe||null, base:r.base||null, versaoScript:r.versaoScript||''};   /* equipe e base: script V49 */
+  DEMANDAS={lidoEm:Date.now(), fiscal:r.fiscal, itens:r.demandas||[], equipe:r.equipe||null, retornos:r.retornos||null, base:r.base||null, versaoScript:r.versaoScript||''};   /* equipe e base: script V49; retornos: V52 */
   await Arquivos.gravarTexto('demandas.json', JSON.stringify(DEMANDAS));
   if(!op.silencioso) aviso('Planilha lida: '+DEMANDAS.itens.length+' demanda'+(DEMANDAS.itens.length===1?'':'s')+' em aberto.');
  }catch(e){ demErro=e.message||String(e); if(!op.silencioso) aviso(demErro, 5000); }
@@ -904,13 +904,20 @@ function documentoDe(d){ if(!cfg.pasta) return null; const k=chaveProtocolo(d.pr
 /* A planilha (script V47+) já diz a situação de cada demanda, pelas mesmas regras dos e-mails semanais */
 function naoIniciada(d){ return d.situacao? d.situacao==='nao_iniciada' : !fiscalizadaEm(d); }
 function demandasParaVistoriar(){ return ((DEMANDAS&&DEMANDAS.itens)||[]).filter(d=>naoIniciada(d) && !vistoriaDe(d)).sort((a,b)=>dataBrParaIso(a.repasse||a.entrada).localeCompare(dataBrParaIso(b.repasse||b.entrada))); }
-function demandasFiscalizadas(){ return ((DEMANDAS&&DEMANDAS.itens)||[]).filter(d=>!naoIniciada(d) || (vistoriaDe(d)||{}).status==='concluida'); }
+function demandasFiscalizadas(){ return ((DEMANDAS&&DEMANDAS.itens)||[]).concat(retornosProprios()).filter(d=>!naoIniciada(d) || (vistoriaDe(d)||{}).status==='concluida'); }
+/* Minhas demandas com Notificação Preliminar (script V52): candidatas a retorno ao local; não entram em "Para vistoriar" */
+function retornosProprios(){ return ((DEMANDAS&&DEMANDAS.retornos)||[]).filter(d=>!d.doColega); }
+/* A minha demanda pelo identificador: a lista da planilha, as notificadas e, por último, o que resta dela na vistoria concluída no app */
+function demandaPorId(id){
+ const d=((DEMANDAS&&DEMANDAS.itens)||[]).concat(retornosProprios()).find(x=>idDemanda(x)===id); if(d) return d;
+ const v=VIST.filter(x=>x.status==='concluida' && x.demanda && x.demanda.id===id).sort(ordemVisitas)[0]; return v? demandaDaVistoria(v) : null;
+}
 function cartaoDemanda(d){
  const du=diasUteisDesde(dataBrParaIso(d.repasse||d.entrada)), f=fiscalizadaEm(d), doc=documentoDe(d), v=vistoriaDe(d), id=encodeURIComponent(idDemanda(d));
  const e=separarEndereco(d.endereco);
  return '<article class="cartao demanda'+(du>=15?' velha':'')+(selVist==='d:'+idDemanda(d)?' sel':'')+'" data-sel="d:'+esc(idDemanda(d))+'"><div class="c-l1"><span class="tag t-planilha">PLANILHA</span><b>'+esc(d.protocolo)+'</b>'+(du!==null? '<span class="idade'+(du>=15?' muito':'')+'">'+(du? 'há '+du+' dia'+(du>1?'s':'')+' úte'+(du>1?'is':'l') : 'hoje')+'</span>' : '')+'</div>'+
   (d.assunto? '<h3>'+esc(d.assunto)+'</h3>' : '')+(d.endereco? '<p class="loc">'+ic('pino')+esc([e.bairro,e.endereco].filter(Boolean).join(' · '))+'</p>' : '')+
-  '<p class="st">'+esc(!naoIniciada(d) && d.situacaoTexto? d.situacaoTexto+(f? ' · fiscalizado em '+dataBrCampo(f) : '') : f? 'Fiscalizado em '+dataBrCampo(f)+' (planilha)' : v? ((ehRetorno(v)? numeroVisita(v)+'ª visita ' : 'Vistoria ')+(v.status==='concluida'? 'concluída no app' : 'em andamento no app')) : 'Ainda não vistoriada · repassada em '+(d.repasse||d.entrada||'?'))+'</p>'+
+  '<p class="st">'+esc(!naoIniciada(d) && d.situacaoTexto? d.situacaoTexto+(d.notificacao? ' em '+d.notificacao : '')+(f? ' · fiscalizado em '+dataBrCampo(f) : '') : f? 'Fiscalizado em '+dataBrCampo(f)+' (planilha)' : v? ((ehRetorno(v)? numeroVisita(v)+'ª visita ' : 'Vistoria ')+(v.status==='concluida'? 'concluída no app' : 'em andamento no app')) : 'Ainda não vistoriada · repassada em '+(d.repasse||d.entrada||'?'))+'</p>'+
   (d.observacoes? '<p class="obs">'+ic('lapis')+esc(d.observacoes)+'</p>' : '')+(d.diligencias && !/^\s*fiscaliz\w*\s*\d/i.test(d.diligencias)? '<p class="obs">'+ic('lista')+esc(d.diligencias)+'</p>' : '')+
   (doc? '<a class="doc-ligado" href="#doc/'+encodeURIComponent(doc.id)+'">'+ic('arquivo')+'<span>Documento: '+esc(situacaoDoc(doc))+'</span></a>' : '')+
   '<div class="c-ac">'+(v? '<button class="bt '+(v.status==='concluida'? 'sec' : 'pri')+'" data-ir="#v/'+v.id+'">'+ic('lapis')+(ehRetorno(v)? 'Abrir visita' : 'Abrir vistoria')+'</button>' : naoIniciada(d)? '<button class="bt pri" data-demanda="'+id+'">'+ic('camera')+'Iniciar vistoria</button>' : '')+
@@ -919,10 +926,10 @@ function cartaoDemanda(d){
 }
 function tipoSugerido(d){ const a=semAcento(d.assunto); return /RUIDO|SOM |SONOR|BARULHO/.test(a)? 'termo_ruido' : 'relatorio_simplificado'; }
 async function iniciarDaDemanda(id){
- const d=((DEMANDAS&&DEMANDAS.itens)||[]).find(x=>idDemanda(x)===id);
+ const d=demandaPorId(id);
  if(!d){ aviso('Esta demanda não está mais na sua lista da planilha (redistribuída ou encerrada). Toque em "Ler agora" em Meus dados para conferir.', 7000); return false; }
  const ja=vistoriaDe(d); if(ja && ja.status!=='concluida'){ location.hash='#v/'+ja.id; return true; }
- if(ja) return !!(await voltarAoLocal({d:d}));      /* já vistoriada: iniciar de novo é um retorno ao local */
+ if(ja || jaFiscalizadaNaPlanilha(d)) return !!(await voltarAoLocal({d:d}));      /* já vistoriada (no app ou na planilha): iniciar de novo é um retorno ao local */
  const v=vistoriaDaDemanda(d, tipoSugerido(d)); iniciarVistoria(v); await gravarVistoria(v);
  location.hash='#v/'+v.id; aviso('Vistoria iniciada às '+v.horaVistoria+'. Confira o tipo de documento em “Editar dados”.', 4500);
 }
@@ -1016,7 +1023,7 @@ async function voltarAoLocal(o){
  await gravarAgora();
  let d=o.d||null, lista;
  if(d) lista=vistoriasDe(d);
- else { lista=visitasLigadas(o.v); if(o.v.demanda) d=((DEMANDAS&&DEMANDAS.itens)||[]).find(x=>idDemanda(x)===o.v.demanda.id)||null; }
+ else { lista=visitasLigadas(o.v); if(o.v.demanda) d=demandaPorId(o.v.demanda.id); }
  const ultima=lista[0]||null;
  if(ultima && ultima.status!=='concluida'){ aviso((ehRetorno(ultima)? 'Esta demanda já tem uma '+numeroVisita(ultima)+'ª visita aberta.' : 'Esta vistoria ainda está aberta.')+' Abrindo ela.', 4000); location.hash='#v/'+ultima.id; return ultima; }
  const n=d? proximaVisita(lista, d) : (ultima? numeroVisita(ultima)+1 : 2), fisc=d? fiscalizadaEm(d) : '';
@@ -1106,7 +1113,7 @@ TELAS.planilha.ligar = function(){
   cfg.urlArmazenamento=(typeof CONFIG_APP!=='undefined' && (CONFIG_APP.urlArmazenamento||'')===armaz)? '' : armaz; gravarCfg();
   ocupado('Consultando a planilha…');
   try{ const r=await Planilha.buscar(url, chave); await Planilha.guardarChave(chave); cfg.urlPlanilha=(typeof CONFIG_APP!=='undefined' && CONFIG_APP.urlPlanilha===url)? '' : url; cfg.planilhaAtiva=true; gravarCfg();
-   DEMANDAS={lidoEm:Date.now(), fiscal:r.fiscal, itens:r.demandas||[], equipe:r.equipe||null, base:r.base||null, versaoScript:r.versaoScript||''}; await Arquivos.gravarTexto('demandas.json', JSON.stringify(DEMANDAS)); ocupado(false);
+   DEMANDAS={lidoEm:Date.now(), fiscal:r.fiscal, itens:r.demandas||[], equipe:r.equipe||null, retornos:r.retornos||null, base:r.base||null, versaoScript:r.versaoScript||''}; await Arquivos.gravarTexto('demandas.json', JSON.stringify(DEMANDAS)); ocupado(false);
    const meu=semAcento(primeiroNome(cfg.nome));
    alert('Chave de '+r.fiscal+': '+DEMANDAS.itens.length+' demanda'+(DEMANDAS.itens.length===1?'':'s')+' em aberto.'+(meu && r.fiscal.indexOf(meu)!==0? '\n\nAtenção: o nome deste aparelho é '+cfg.nome+'. Confira se a chave é a certa.' : ''));
    location.hash='#inicio'; }
@@ -1442,7 +1449,7 @@ document.addEventListener('click', e=>{
  if(e.target.closest('[data-voltar]')){ e.preventDefault(); voltar(); return; }
  const ini=e.target.closest('[data-iniciar]'); if(ini){ const v=acharVistoria(ini.dataset.iniciar); iniciarVistoria(v); gravarVistoria(v).then(()=>{ location.hash='#v/'+v.id; }); return; }
  const dm=e.target.closest('[data-demanda]'); if(dm){ iniciarDaDemanda(decodeURIComponent(dm.dataset.demanda)); return; }
- const rd=e.target.closest('[data-retorno]'); if(rd){ const dd=((DEMANDAS&&DEMANDAS.itens)||[]).find(x=>idDemanda(x)===decodeURIComponent(rd.dataset.retorno)); if(dd) voltarAoLocal({d:dd}); else aviso('Esta demanda não está mais na sua lista da planilha.', 5000); return; }
+ const rd=e.target.closest('[data-retorno]'); if(rd){ const dd=demandaPorId(decodeURIComponent(rd.dataset.retorno)); if(dd) voltarAoLocal({d:dd}); else aviso('Esta demanda não está mais na sua lista da planilha.', 5000); return; }
  const rv=e.target.closest('[data-retorno-v]'); if(rv){ const vv=acharVistoria(rv.dataset.retornoV); if(vv) voltarAoLocal({v:vv}); return; }
  const lr=e.target.closest('[data-limpar-retorno]'); if(lr){ const vv=acharVistoria(lr.dataset.limparRetorno); if(vv && confirm('Dispensar o retorno combinado para '+(vv.voltarEm? dataBrCampo(vv.voltarEm) : 'esta vistoria')+'?')){ vv.voltarEm=''; gravarVistoria(vv).then(()=>mostrar(true)); } return; }
  if(e.target.closest('[data-ler-planilha]')){ atualizarDemandas({}); return; }

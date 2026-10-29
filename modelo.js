@@ -224,6 +224,21 @@ function novaVisitaDe(ant, motivo, visita){
              anotacoes:String(ant.anotacoes||'').slice(0,400), local:ant.local||null, tipoDocumento:ant.tipoDocumento};
  return v;
 }
+/* Retorno ao local no itinerário: o que a planilha diz que já foi fiscalizado (ou notificado) pede RETORNO, não uma primeira vistoria.
+   "notificada" vem do script V52 (&retornos=1): as demandas com Notificação Preliminar, que o script antes não entregava ao app. */
+const SITUACOES_FISCALIZADA=['em_andamento','pendente_relatorio','em_analise','retorno_analise','area_tecnica','outros_orgaos','notificada'];
+function jaFiscalizadaNaPlanilha(d){ return SITUACOES_FISCALIZADA.indexOf((d && d.situacao)||'')>=0; }
+/* A demanda refeita a partir da vistoria concluída no app, para quando ela saiu das listas da planilha
+   (notificada antes do V52, redistribuída…). O id é o mesmo (mesmo protocolo e entrada), então as visitas continuam ligadas. */
+function demandaDaVistoria(v){
+ const dm=v && v.demanda; if(!dm) return null;
+ const prot=dm.protocolo || ((v.expedienteTipo||'Atendimento')+' '+(v.expedienteNum||''));
+ const end=v.bairro && v.endereco? v.endereco+', '+v.bairro : (v.endereco||v.bairro||'');
+ const d={linha:dm.linha, entrada:dm.entrada||'', protocolo:prot, assunto:v.assunto||'', endereco:end, fiscal:'', repasse:dm.repasse||'', diligencias:dm.diligencias||'',
+          situacao:'concluida_app', situacaoTexto:'Vistoria concluída no app', doColega:false, daVistoria:true};
+ if(v.local && v.local.lat!==undefined) d.posicao={lat:v.local.lat, lng:v.local.lon, precisao:'exata'};
+ return d;
+}
 /* Retorno a uma demanda da planilha que já foi fiscalizada fora do app (só se sabe a data pelas diligências) */
 function novaVisitaDaDemanda(d, motivo, visita, dataAnterior){
  const v=vistoriaDaDemanda(d, 'relatorio_simplificado');
@@ -392,4 +407,4 @@ function avaliarVersao(v, codigoAtual){
  return {valida:true, versao:String(v.versao||v.codigo).slice(0,40), codigo:v.codigo, arquivo:String(v.arquivo), tamanho:v.tamanho, sha256:String(v.sha256).toLowerCase(), minimo:minimo,
   novidades:(Array.isArray(v.novidades)? v.novidades : []).map(x=>String(x).slice(0,140)).slice(0,6), nova:v.codigo>codigoAtual, abaixoDoMinimo:codigoAtual<minimo};
 }
-if(typeof module!=='undefined') module.exports={avaliarVersao, mesclarCorrecoes, aplicarEscolhas, completarRascunho, parseProtocolo, chaveProtocolo, mesmoProtocolo, idDemanda, fiscalizadaEm, separarEndereco, vistoriaDaDemanda, resumoDocumento, unirDocumentos, grupoDocumento, diasUteisDesde, pendentesEnvio, nomeComSufixo, caminhoSmb, ultimaParte, novaVistoria, iniciarVistoria, posicaoDe, exifDaFoto, alertasFoto, pendenciasConcluir, paraDocumento, nomeArquivoVistoria, protocoloTexto};
+if(typeof module!=='undefined') module.exports={avaliarVersao, mesclarCorrecoes, aplicarEscolhas, completarRascunho, parseProtocolo, chaveProtocolo, mesmoProtocolo, idDemanda, fiscalizadaEm, separarEndereco, vistoriaDaDemanda, resumoDocumento, unirDocumentos, grupoDocumento, diasUteisDesde, pendentesEnvio, nomeComSufixo, caminhoSmb, ultimaParte, novaVistoria, iniciarVistoria, posicaoDe, exifDaFoto, alertasFoto, pendenciasConcluir, paraDocumento, nomeArquivoVistoria, protocoloTexto, jaFiscalizadaNaPlanilha, demandaDaVistoria, SITUACOES_FISCALIZADA};

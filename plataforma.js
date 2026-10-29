@@ -295,7 +295,7 @@ const Planilha = {
   if(!url) throw Object.assign(new Error('O endereço do script da planilha não está configurado.'), {code:'SEM_CONFIG'});
   if(!chave) throw Object.assign(new Error('Falta a chave da planilha (Meus dados › Demandas da planilha).'), {code:'SEM_CONFIG'});
   if(url==='simulado') return demandasSimuladas(chave);
-  const alvo=url+(url.indexOf('?')<0?'?':'&')+'chave='+encodeURIComponent(chave)+'&equipe=1';
+  const alvo=url+(url.indexOf('?')<0?'?':'&')+'chave='+encodeURIComponent(chave)+'&equipe=1&retornos=1';
   let corpo;
   try{
    if(NATIVO){ const r=await CAP.Plugins.CapacitorHttp.get({url:alvo, connectTimeout:20000, readTimeout:30000}); if(r.status!==200) throw new Error('HTTP '+r.status); corpo=r.data; }
@@ -336,6 +336,10 @@ function demandasSimuladas(chave){
  const pos=[[-28.4930,-49.0040],[-28.4990,-49.0225],null,[-28.4795,-49.0110]];
  r.demandas.forEach((d,i)=>{ if(pos[i]) d.posicao={lat:pos[i][0], lng:pos[i][1], precisao:'exata'}; else d.posicao={precisao:'nao_achou'}; });
  r.base={nome:'FUNAT', endereco:'Avenida Marechal Deodoro, 1311, Oficinas, Tubarão - SC, Brasil', posicao:{lat:-28.4846, lng:-49.0203, precisao:'numero'}};
+ r.retornos=[
+  {linha:700, entrada:'12/08/2026', protocolo:'Atendimento 1.100/2026', assunto:'Esgoto a céu aberto', endereco:'Rua Henrique Lage, 55, Centro', fiscal:'FELISBERTO', repasse:'13/08/2026', diligencias:'Fiscalizado 14/08/2026', observacoes:'', notificacao:'15/09/2026', situacao:'notificada', situacaoTexto:'Notificada', doColega:false, posicao:{lat:-28.4836, lng:-49.0120, precisao:'exata'}},
+  {linha:701, entrada:'20/08/2026', protocolo:'Atendimento 1.130/2026', assunto:'Resíduos de obra', endereco:'Rua Laguna, 100, Oficinas', fiscal:'MARCELO', repasse:'21/08/2026', diligencias:'Fiscalizado 22/08/2026', notificacao:'22/09/2026', situacao:'notificada', situacaoTexto:'Notificada', doColega:true, posicao:{lat:-28.4780, lng:-49.0090, precisao:'exata'}}
+ ];
  r.equipe=[
   {linha:650, entrada:'05/10/2026', protocolo:'Atendimento 1.399/2026', assunto:'Descarte irregular de resíduos', endereco:'Rua Coronel Cabral, 412, Centro', fiscal:'MARCELO', repasse:'06/10/2026', diligencias:'', situacao:'nao_iniciada', doColega:true, posicao:{lat:-28.4760, lng:-49.0080, precisao:'exata'}},
   {linha:651, entrada:'07/10/2026', protocolo:'Atendimento 1.412/2026', assunto:'Esgoto a céu aberto', endereco:'Rua Pedro Gomes, 88, Humaitá', fiscal:'MARCELO', repasse:'07/10/2026', diligencias:'', situacao:'nao_iniciada', doColega:true, posicao:{lat:-28.4650, lng:-49.0190, precisao:'numero'}},

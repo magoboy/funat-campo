@@ -503,3 +503,6 @@ button.resumo-docs{width:100%;border:0;font:inherit;text-align:left;cursor:point
  .it-grande{font-size:17px;margin:4px 0 8px}
  .duas-col .col-a>.busca:first-child{margin-top:0}
 }
+
+/* Planejar o dia: Para vistoriar | Retornos */
+.it-seg.tipo{grid-template-columns:repeat(2,1fr);margin-bottom:6px}

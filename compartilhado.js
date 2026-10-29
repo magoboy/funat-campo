@@ -51,7 +51,7 @@ const CAMPOS_EDICAO = {
   conclusao:[{c:'ruido.conclusaoExtra', r:'Acréscimo à conclusão', t:'texto'}]
  },
  termo_arquivamento: {
-  identificacao:[{c:'arq.expedienteNum', r:'1Doc n.º', t:'linha'}, {c:'arq.dataTermo', r:'Data do termo (AAAA-MM-DD)', t:'linha'}, {c:'arq.coordE', r:'Coordenada E', t:'linha'}, {c:'arq.coordN', r:'Coordenada N', t:'linha'}],
+  identificacao:[{c:'arq.expedienteNum', r:'Nº do expediente', t:'linha'}, {c:'arq.dataTermo', r:'Data do termo (AAAA-MM-DD)', t:'linha'}, {c:'arq.coordE', r:'Coordenada E', t:'linha'}, {c:'arq.coordN', r:'Coordenada N', t:'linha'}],
   narrativa:[{c:'arq.corpo', r:'Descrição do fato', t:'texto'}],
   desfecho:[{c:'arq.desfecho', r:'Alternativa marcada', t:'opcoes'}]
  }
