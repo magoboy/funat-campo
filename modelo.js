@@ -113,8 +113,11 @@ function paraDocumento(v, fotosB64, elaborador){
  if(ehRetorno(v)) s.vistoriaCampo.retorno={visita:numeroVisita(v), motivo:v.motivoRetorno||'', motivoTexto:rotuloMotivo(v.motivoRetorno), anteriorId:v.retornoDe||'',
                                            anteriorData:(v.anterior&&v.anterior.data)||'', anteriorFotos:v.anterior? v.anterior.fotos : null};
  if(v.voltarEm) s.vistoriaCampo.voltarEm=v.voltarEm;
+ /* mudada depois de ir para a pasta: um registro novo no histórico faz o computador perceber que esta versão
+    é outra (o quadro "Duas versões" compara pelo histórico), em vez de gravar por cima dela ao encaminhar */
+ if(v.atualizadaEm && v.atualizadaEm>(v.concluidaEm||'')) s.revisao.historico.push({acao:'vistoria atualizada no app de campo', autor:elaborador||'', papel:'elaborador', data:v.atualizadaEm});
  if(v.tipoDocumento==='relatorio'){
-  s.rel={numero:'', datasVistoria:datas, dataVistoria:datas[0], endereco:[v.endereco, v.bairro].filter(Boolean).join(', '),
+  s.rel={numero:'', datasVistoria:datas, dataVistoria:datas[0], endereco:'',          // endereço do INFRATOR: o campo não sabe (o local do fato vai em "local")
          local:[v.endereco, v.bairro].filter(Boolean).join(', '), coord:v.local? GEO.fmtUTM(v.local.e)+' E; '+GEO.fmtUTM(v.local.n)+' S' : '',
          descricao:'', fotos:fotos};
   if(v.expedienteNum) s.processo=protocoloTexto(v);
@@ -136,6 +139,25 @@ function paraDocumento(v, fotosB64, elaborador){
  return s;
 }
 
+/* Impressão do documento que sairia desta vistoria, sem ler as fotos (cada foto entra pelo id e pela versão).
+   Diz se uma vistoria concluída mudou depois de ir para a pasta ou para a internet: foto nova, legenda, anotação…
+   O registro "atualizada", o nome de quem elaborou e a data do retorno combinado ficam de fora. */
+function impressaoDocumento(v){
+ const fotos=(v.fotos||[]).map(f=>({data:String(f.id)+'#'+(f.versao||0), w:f.w, h:f.h}));
+ const txt=JSON.stringify(paraDocumento(Object.assign({}, v, {atualizadaEm:'', voltarEm:''}), fotos, ''));   // o retorno combinado é agenda, não conteúdo
+ let h=5381; for(let i=0;i<txt.length;i++) h=((h<<5)+h+txt.charCodeAt(i))|0;
+ return (h>>>0).toString(36)+'.'+txt.length;
+}
+/* Antes de gravar uma vistoria concluída que já foi entregue: se o documento mudou, ela volta para a fila e ganha
+   a data da atualização (que vira registro no histórico). Devolve true quando acabou de voltar para a fila. */
+function conferirMudancaDepoisDeEnviar(v, agora){
+ if(v.status!=='concluida' || !v.impressaoEnviada) return false;
+ const imp=impressaoDocumento(v); if(imp===v.impressaoEnviada) return false;
+ const voltou=!v.precisaEnviar;
+ v.precisaEnviar=true; if(voltou) v.erroEnvio='';
+ if(v.impressaoAtualizada!==imp){ v.impressaoAtualizada=imp; v.atualizadaEm=(agora||new Date()).toISOString(); }
+ return voltou;
+}
 /* Fila de envio: concluídas que ainda não foram (ou que mudaram depois de ir) para a pasta */
 function pendentesEnvio(lista){ return lista.filter(v=>v.status==='concluida' && v.precisaEnviar); }
 /* Na pasta, um nome que já existe e é de outra vistoria vira "nome (2).json" */
@@ -227,7 +249,9 @@ function novaVisitaDe(ant, motivo, visita){
 /* Retorno ao local no itinerário: o que a planilha diz que já foi fiscalizado (ou notificado) pede RETORNO, não uma primeira vistoria.
    "notificada" vem do script V52 (&retornos=1): as demandas com Notificação Preliminar, que o script antes não entregava ao app. */
 const SITUACOES_FISCALIZADA=['em_andamento','pendente_relatorio','em_analise','retorno_analise','area_tecnica','outros_orgaos','notificada'];
-function jaFiscalizadaNaPlanilha(d){ return SITUACOES_FISCALIZADA.indexOf((d && d.situacao)||'')>=0; }
+/* "Diligência em andamento" é qualquer texto na coluna Diligências ("ninguém no local, retornar", "retornar com a Casan"):
+   só conta como já fiscalizada se a coluna registrar "Fiscalizado em dd/mm/aaaa". Senão, a próxima ida é a 1ª visita. */
+function jaFiscalizadaNaPlanilha(d){ const s=(d && d.situacao)||''; if(s==='em_andamento') return !!fiscalizadaEm(d); return SITUACOES_FISCALIZADA.indexOf(s)>=0; }
 /* A demanda refeita a partir da vistoria concluída no app, para quando ela saiu das listas da planilha
    (notificada antes do V52, redistribuída…). O id é o mesmo (mesmo protocolo e entrada), então as visitas continuam ligadas. */
 function demandaDaVistoria(v){
@@ -294,8 +318,20 @@ function dataBrParaIso(t){ const m=/(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(t
 function idDemanda(d){ return chaveProtocolo(d.protocolo)+'|'+(d.entrada||''); }
 /* "Fiscalizado 01/07/2025 - Fiscalizado 19/09/2025" → a data mais recente */
 function fiscalizadaEm(d){ const re=/fiscaliz\w*\s*(?:em\s*)?(\d{1,2}\/\d{1,2}\/\d{4})/gi; let m, ult=''; while((m=re.exec(String(d.diligencias||'')))) { const iso=dataBrParaIso(m[1]); if(iso>ult) ult=iso; } return ult; }
-/* Endereço da planilha: "Centro - Rua Carlos João Gonçalves, 159" → bairro + endereço */
-function separarEndereco(t){ t=String(t||'').trim(); const i=t.indexOf(' - '); return i>0? {bairro:t.slice(0,i).trim(), endereco:t.slice(i+3).trim()} : {bairro:t, endereco:''}; }
+/* Endereço da planilha → bairro + endereço. Há três formatos na planilha:
+   "Centro - Rua Carlos João Gonçalves, 159" (bairro antes), "Rua X, 100 - Centro" (bairro depois) e "Rua X, 55, Centro".
+   O lado que parece logradouro (tem número ou começa por rua, avenida…) é o endereço; o mesmo critério do itinerário. */
+function pareceLogradouroEnd(s){ return /\d/.test(s) || /^(rua|r\.|av|avenida|estrada|rodovia|rod\.|travessa|serv|marginal)\b/i.test(semAcentoModelo(s)); }
+function separarEndereco(t){
+ t=String(t||'').trim(); const i=t.indexOf(' - ');
+ if(i>0){ const antes=t.slice(0,i).trim(), depois=t.slice(i+3).trim();
+  if(!pareceLogradouroEnd(antes)) return {bairro:antes, endereco:depois};
+  if(depois && !pareceLogradouroEnd(depois) && depois.split(/\s+/).length<=4) return {bairro:depois, endereco:antes};
+  return {bairro:'', endereco:t}; }
+ const p=t.split(',').map(x=>x.trim()).filter(Boolean), u=p[p.length-1]||'';
+ if(p.length>1 && !/\d/.test(u) && !/^(pr[óo]x|ao lado|final)/i.test(u)) return {bairro:u, endereco:p.slice(0,-1).join(', ')};
+ return pareceLogradouroEnd(t)? {bairro:'', endereco:t} : {bairro:t, endereco:''};
+}
 function vistoriaDaDemanda(d, tipoDocumento){
  const p=parseProtocolo(d.protocolo), e=separarEndereco(d.endereco);
  const v=novaVistoria({tipoDocumento:tipoDocumento||'relatorio', expedienteTipo:p.tipo, expedienteNum:p.num, assunto:d.assunto, bairro:e.bairro, endereco:e.endereco});
@@ -407,4 +443,4 @@ function avaliarVersao(v, codigoAtual){
  return {valida:true, versao:String(v.versao||v.codigo).slice(0,40), codigo:v.codigo, arquivo:String(v.arquivo), tamanho:v.tamanho, sha256:String(v.sha256).toLowerCase(), minimo:minimo,
   novidades:(Array.isArray(v.novidades)? v.novidades : []).map(x=>String(x).slice(0,140)).slice(0,6), nova:v.codigo>codigoAtual, abaixoDoMinimo:codigoAtual<minimo};
 }
-if(typeof module!=='undefined') module.exports={avaliarVersao, mesclarCorrecoes, aplicarEscolhas, completarRascunho, parseProtocolo, chaveProtocolo, mesmoProtocolo, idDemanda, fiscalizadaEm, separarEndereco, vistoriaDaDemanda, resumoDocumento, unirDocumentos, grupoDocumento, diasUteisDesde, pendentesEnvio, nomeComSufixo, caminhoSmb, ultimaParte, novaVistoria, iniciarVistoria, posicaoDe, exifDaFoto, alertasFoto, pendenciasConcluir, paraDocumento, nomeArquivoVistoria, protocoloTexto, jaFiscalizadaNaPlanilha, demandaDaVistoria, SITUACOES_FISCALIZADA};
+if(typeof module!=='undefined') module.exports={avaliarVersao, impressaoDocumento, conferirMudancaDepoisDeEnviar, jaFiscalizadaNaPlanilha, mesclarCorrecoes, aplicarEscolhas, completarRascunho, parseProtocolo, chaveProtocolo, mesmoProtocolo, idDemanda, fiscalizadaEm, separarEndereco, vistoriaDaDemanda, resumoDocumento, unirDocumentos, grupoDocumento, diasUteisDesde, pendentesEnvio, nomeComSufixo, caminhoSmb, ultimaParte, novaVistoria, iniciarVistoria, posicaoDe, exifDaFoto, alertasFoto, pendenciasConcluir, paraDocumento, nomeArquivoVistoria, protocoloTexto, jaFiscalizadaNaPlanilha, demandaDaVistoria, SITUACOES_FISCALIZADA};

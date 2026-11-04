@@ -218,12 +218,12 @@ const Pasta = MODO_WEB ? new Proxy({}, {get:(_, k)=> k==='configuracao'? async()
    if(o.jaEnviado && !la) throw erro('A vistoria enviada antes não está mais em VISTORIAS. Nada foi gravado.','SUMIU');
    if(la && o.id){ if(la.id && la.id!==o.id) throw erro('Já existe na pasta um arquivo de OUTRO caso com o nome '+o.nome+'.','EXISTE'); if(Number(o.modificado)>0 && la.mod!==Number(o.modificado)) throw erro('O arquivo desta vistoria na pasta foi alterado no computador depois do envio.','MUDOU'); }
    const mod=Date.now(); pai[ult][o.nome]='arquivo'; meta[cam]={id:o.id||'', mod:mod}; return {caminho:o.destinoPasta+'\\'+o.nome, tamanho:1, em:mod, modificado:mod}; },
-  /* documentos simulados: os exemplos de "04 - Testes e Exemplos/_teste" e um devolvido montado aqui */
+  /* documentos simulados: os exemplos de "testes/_teste" (fora do git: casos reais) e um devolvido montado aqui */
   listarJson:async ()=>[{caminho:'Atend. 1234 - 18-09-2026.json', modificado:Date.now()-864e5*3, tamanho:2802},
    {caminho:'APROVADOS\\Relatorio_Fiscalizacao.json', modificado:Date.now()-864e5, tamanho:6722}, {caminho:'DEVOLVIDOS\\Atend. 999-2026.json', modificado:Date.now()-36e5, tamanho:900}],
   lerVarios:async (base, caminhos)=>Promise.all(caminhos.map(async c=>{
    if(/999/.test(c)) return {caminho:c, texto:JSON.stringify(docSimulado999())};
-   const r=await fetch('/04%20-%20Testes%20e%20Exemplos/_teste/'+encodeURIComponent(c.split('\\').pop())); return {caminho:c, texto:await r.text()}; })),
+   const r=await fetch('/testes/_teste/'+encodeURIComponent(c.split('\\').pop())); return {caminho:c, texto:await r.text()}; })),
   lerCompleto:async (base, c)=>({texto:JSON.stringify(docSimulado999()), modificado:1000, tamanho:900}),
   encaminhar:async o=>{ if(o.modificado!==1000) throw erro('O arquivo foi alterado na pasta depois que você abriu a correção.','MUDOU'); window.__encaminhado=o; return {caminho:o.base+'\\'+o.nome, renomeado:false}; },
   /* atualização simulada: no navegador, localStorage['funat-simular-atualizacao']='1' faz aparecer uma versão nova */

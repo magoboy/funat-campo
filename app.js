@@ -2,8 +2,8 @@
    Rotas pelo endereço (#inicio, #vistorias, #nova, #v/<id>, #foto/<id>/<n>, #envios, #pronta/<id>, #config).
    Cada vistoria fica em vistorias/<id>.json e as fotos em fotos/<id>/<foto>.jpg, na memória interna do app. */
 
-const VERSAO_APP = '0.9.10 (piloto 15)';
-const CODIGO_APP = 24;              // sobe a cada APK: o Android só instala por cima versão com código maior
+const VERSAO_APP = '0.9.11 (piloto 16)';
+const CODIGO_APP = 25;              // sobe a cada APK: o Android só instala por cima versão com código maior
 let VIST = [];                       // vistorias carregadas
 let cfg = lerCfg();
 
@@ -46,11 +46,17 @@ async function carregarVistorias(){
  }
  /* sobrou só a cópia (o app morreu antes de criar o principal) */
  for(const n of todos.filter(x=>/\.json\.novo$/.test(x) && nomes.indexOf(x.slice(0,-5))<0)){ try{ const v=await ler(n); if(v){ out.push(v); await Arquivos.gravarTexto('vistorias/'+n.slice(0,-5), JSON.stringify(v)); } }catch(e){ quebrados.push(n); } }
+ /* entregues antes da 0.9.11 (sem a impressão do que foi): vale o que está no aparelho; daqui em diante, mudar volta para a fila */
+ for(const v of out) if(v.status==='concluida' && !v.precisaEnviar && !v.impressaoEnviada && (v.enviadaEm || v.exportadaEm)) v.impressaoEnviada=impressaoDocumento(v);
  VIST=out; VIST_ILEGIVEIS=quebrados;
  if(quebrados.length) setTimeout(()=>aviso(quebrados.length+' vistoria(s) guardada(s) neste aparelho não puderam ser lidas ('+quebrados.join(', ')+'). Não desinstale o app e avise o Julio.', 12000), 1500);
 }
 async function gravarVistoria(v){
- v.editadaEm=new Date().toISOString(); const txt=JSON.stringify(v), cam='vistorias/'+v.id+'.json';
+ const agora=new Date();
+ /* vistoria concluída e já entregue que mudou (foto, legenda, anotação, data…): volta para a fila. Antes, a mudança
+    ficava só no celular e o computador continuava com a versão antiga, sem aviso. */
+ if(conferirMudancaDepoisDeEnviar(v, agora)) setTimeout(()=>aviso('Esta vistoria já tinha sido enviada: a mudança vai de novo para a pasta.', 4500), 0);
+ v.editadaEm=agora.toISOString(); const txt=JSON.stringify(v), cam='vistorias/'+v.id+'.json';
  await Arquivos.gravarTexto(cam+'.novo', txt); await Arquivos.gravarTexto(cam, txt); await Arquivos.apagar(cam+'.novo');
  if(!VIST.includes(v)) VIST.push(v);
 }
@@ -265,7 +271,7 @@ TELAS.v.ligar = function(id){
  if($('#vConcluir')) $('#vConcluir').onclick=()=>concluir(v);
  if($('#vReabrir')) $('#vReabrir').onclick=async()=>{
   if(v.enviadaEm && !confirm((v.enviadaPor==='nuvem'? 'Esta vistoria já foi enviada pela internet.' : 'Esta vistoria já foi enviada para a pasta ('+v.arquivoRemoto+').')+'\n\nAo concluir de novo, o app grava por cima desse arquivo. Se ela já foi aberta e alterada no computador, essas alterações se perdem.\n\nReabrir mesmo assim?')) return;
-  v.status='em_andamento'; v.concluidaEm=''; v.precisaEnviar=false; await gravarVistoria(v); mostrar(true); };
+  v.status='em_andamento'; v.concluidaEm=''; v.precisaEnviar=false; v.impressaoEnviada=''; await gravarVistoria(v); mostrar(true); };
 };
 
 async function registrarPosicao(v){
@@ -347,6 +353,7 @@ function situacaoEnvio(v){
  if(MODO_WEB) return v.precisaEnviar? {cls:'fila', txt:'Falta exportar e salvar na pasta VISTORIAS (app Arquivos).'} : {cls:'ok', txt:'Exportada '+quandoRelativo(v.exportadaEm)+'. Confira se o arquivo está na sua pasta VISTORIAS.'};
  if(v.precisaEnviar && envioRodando) return {cls:'andando', txt:'Enviando para a pasta…'};
  if(v.precisaEnviar) return {cls:'fila', txt: v.erroEnvio? 'Na fila: '+v.erroEnvio : cfg.pasta? (temNuvem()? 'Na fila: vai no Wi-Fi da FUNAT ou, fora dela, pela internet.' : 'Na fila: vai quando o celular estiver no Wi-Fi da FUNAT.') : 'Na fila: configure a pasta da FUNAT em Meus dados.'};
+ if(v.mudancaNaoEnviada) return {cls:'fila', txt:'A mudança feita '+quandoRelativo(v.mudancaNaoEnviada)+' não foi para a pasta: o documento já tinha sido escrito e encaminhado no computador. Avise quem está com ele, ou use "Exportar arquivo".'};
  if(v.enviadaEm) return {cls:'ok', txt:'Enviada '+quandoRelativo(v.enviadaEm)+' para '+ultimaParte(v.arquivoRemoto.replace(/\\[^\\]*$/,''))+' › '+ultimaParte(v.arquivoRemoto)};
  return {cls:'', txt:'Não está na fila.'};
 }
@@ -446,7 +453,7 @@ async function exportarLoteWeb(lista){
   '<p class="ajuda">Ainda não ligou o app Arquivos à pasta? <a href="#arquivos-ajuda" id="fsAjuda">Veja como</a>.</p></div>';
  document.body.appendChild(fundo);
  const fechar=()=>{ fundo.remove(); setTimeout(()=>URL.revokeObjectURL(url), 60000); };
- const feito=async()=>{ const em=new Date().toISOString(); for(const v of lista){ v.precisaEnviar=false; v.exportadaEm=em; await gravarVistoria(v); } fechar(); mostrar(true);
+ const feito=async()=>{ const em=new Date().toISOString(); for(const v of lista){ v.precisaEnviar=false; v.impressaoEnviada=impressaoDocumento(v); v.exportadaEm=em; await gravarVistoria(v); } fechar(); mostrar(true);
   aviso(varios? lista.length+' vistorias marcadas como salvas na pasta. Confira no computador.' : 'Marcada como salva na pasta. Confira no computador.', 4500); };
  const c=fundo.querySelector('#fsComp');
  if(c) c.onclick=()=>{ navigator.share({files:arqs, title:varios? arqs.length+' vistorias' : arq.name}).then(feito).catch(e=>{ if(e && e.name!=='AbortError') alert('Não foi possível abrir o Compartilhar: '+(e.message||e)+(varios? '\n\nSalve uma de cada vez, pelo botão de cada vistoria.' : '\n\nUse "Baixar o arquivo".')); }); };
@@ -579,12 +586,16 @@ async function enviarPendentes(op){
    let nome=jaEnviado? ultimaParte(v.arquivoRemoto) : (v.envioNome||'');
    if(!nome){ const base=nomeArquivoVistoria(v); for(let n=1;n<50;n++){ nome=nomeComSufixo(base,n); if(!await Pasta.existe(caminhoSmb(destino, nome))) break; } }
    if(!jaEnviado && v.envioNome!==nome){ v.envioNome=nome; await gravarVistoria(v); }
-   const txt=await montarDocumento(v), local=await arquivoParaEnvio(nome, txt);
+   const imp=impressaoDocumento(v), txt=await montarDocumento(v), local=await arquivoParaEnvio(nome, txt);
    let r; try{ r=await Pasta.enviar({origem:local, destinoPasta:destino, nome:nome, id:'campo-'+v.id, jaEnviado:jaEnviado, modificado:v.remotoMod? String(v.remotoMod) : ''}); }
    finally{ await apagarArquivoDeEnvio(nome); }
-   v.precisaEnviar=false; v.enviadaEm=new Date().toISOString(); v.arquivoRemoto=r.caminho; v.remotoMod=r.modificado||0; v.envioNome=''; v.erroEnvio=''; await gravarVistoria(v); ok++;
+   v.precisaEnviar=false; v.impressaoEnviada=imp; v.enviadaEm=new Date().toISOString(); v.entregueEm=v.entregueEm||v.enviadaEm; v.arquivoRemoto=r.caminho; v.remotoMod=r.modificado||0; v.envioNome=''; v.erroEnvio=''; v.mudancaNaoEnviada=''; await gravarVistoria(v); ok++;
    cfg.ultimoEnvio=Date.now(); gravarCfg();
   }catch(e){
+   /* a vistoria já saiu de VISTORIAS (o documento foi escrito e encaminhado no computador): a mudança feita depois
+      não tem para onde ir sozinha. Sai da fila com o aviso no cartão, em vez de ficar presa e segurar as correções. */
+   if(e.code==='SUMIU' && v.impressaoEnviada){ v.precisaEnviar=false; v.impressaoEnviada=impressaoDocumento(v); v.mudancaNaoEnviada=new Date().toISOString(); v.erroEnvio='';
+    await gravarVistoria(v); continue; }
    erro=e; const rede=e.code==='SEM_REDE';
    if(e.code==='EXISTE'){ v.envioNome=''; }   // o nome foi ocupado por OUTRO caso: a próxima tentativa escolhe outro
    /* senha recusada ou cofre ilegível (aparelho restaurado de backup) não é "falta de Wi-Fi": a mensagem aparece no cartão */
@@ -613,10 +624,10 @@ async function enviarPelaNuvem(fila, op){
   for(const v of fila){
    try{
     await gravarAgora();
-    const nome=nomeArquivoVistoria(v), txt=await montarDocumento(v);
+    const nome=nomeArquivoVistoria(v), imp=impressaoDocumento(v), txt=await montarDocumento(v);
     const r=await Nuvem.enviar(urlArmazenamento(), chave, {id:'campo-'+v.id, nome:nome, conteudo:txt, origem:MODO_WEB? 'web' : 'android'});
     const agora=new Date().toISOString();
-    v.precisaEnviar=false; v.enviadaEm=agora; v.enviadaPor='nuvem'; v.nuvemEm=r.recebidoEm||agora; v.nuvemArquivo=r.arquivo||''; v.recebidaEm=''; v.erroEnvio=''; if(MODO_WEB) v.exportadaEm=''; await gravarVistoria(v); ok++;
+    v.precisaEnviar=false; v.impressaoEnviada=imp; v.enviadaEm=agora; v.enviadaPor='nuvem'; v.nuvemEm=r.recebidoEm||agora; v.nuvemArquivo=r.arquivo||''; v.recebidaEm=''; v.erroEnvio=''; v.mudancaNaoEnviada=''; if(MODO_WEB) v.exportadaEm=''; await gravarVistoria(v); ok++;
     cfg.ultimoEnvio=Date.now(); gravarCfg();
    }catch(e){
     erro=e; v.erroEnvio=e.code==='SEM_REDE'? '' : (e.message||String(e)); await gravarVistoria(v);
@@ -642,11 +653,13 @@ async function ponteParaPasta(){
  let n=0;
  for(const v of esperando){
   const x=sit['campo-'+v.id]||{};
-  if(x.estado==='recebida'){ v.recebidaEm=x.em||new Date().toISOString(); await gravarVistoria(v); continue; }
-  if(x.estado==='na_caixa'){
-   if(!v.nuvemArquivo) continue;                                         // sem o arquivo da caixa: fica para o painel
-   try{ await Nuvem.pedir(urlArmazenamento(), {acao:'confirmar', chave:chave, arquivo:v.nuvemArquivo, id:'campo-'+v.id, destino:'gravada pelo celular no Wi-Fi da FUNAT'}); }catch(e){ continue; }
-  }
+  if(x.estado==='recebida'){ v.recebidaEm=x.em||new Date().toISOString(); v.entregueEm=v.entregueEm||v.recebidaEm; await gravarVistoria(v); continue; }
+  /* Só vai pela rede a vistoria que NUNCA chegou à pasta. A que já chegou pode estar sendo trabalhada no computador:
+     fica para o Painel do Auxiliar, que confere se ela ainda está em VISTORIAS (senão, mostra o conflito). Qualquer
+     outra resposta (desconhecida…) também fica: regravar na pasta poderia criar uma segunda cópia do caso. */
+  if(x.estado!=='na_caixa' || v.entregueEm || v.arquivoRemoto || !v.nuvemArquivo) continue;
+  let conf; try{ conf=await Nuvem.pedir(urlArmazenamento(), {acao:'confirmar', chave:chave, arquivo:v.nuvemArquivo, id:'campo-'+v.id, destino:'gravada pelo celular no Wi-Fi da FUNAT'}); }catch(e){ continue; }
+  if(!conf || conf.jaConfirmado) continue;                               // já saiu da caixa por outro caminho (o painel recebeu)
   v.enviadaPor=''; v.nuvemArquivo=''; v.precisaEnviar=true; v.envioNome=v.envioNome||nomeArquivoVistoria(v); await gravarVistoria(v); n++;
  }
  return n;
@@ -658,7 +671,7 @@ async function conferirRecebidas(){
  const chave=await Planilha.chave(); if(!chave) return;
  let r; try{ r=await Nuvem.situacao(urlArmazenamento(), chave, esperando.map(v=>'campo-'+v.id)); }catch(e){ return; }
  let mudou=0;
- for(const v of esperando){ const x=(r.situacao||{})['campo-'+v.id]; if(x && x.estado==='recebida'){ v.recebidaEm=x.em||new Date().toISOString(); await gravarVistoria(v); mudou++; } }
+ for(const v of esperando){ const x=(r.situacao||{})['campo-'+v.id]; if(x && x.estado==='recebida'){ v.recebidaEm=x.em||new Date().toISOString(); v.entregueEm=v.entregueEm||v.recebidaEm; await gravarVistoria(v); mudou++; } }
  if(mudou && ['envios','inicio','vistorias','pronta','v'].includes(rotaAtual().nome)) atualizarSemPerderFoco();
 }
 /* Correções feitas sem rede: vão quando a pasta responde. Conflito não vai: espera a escolha do auxiliar. */
