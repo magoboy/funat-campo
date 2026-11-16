@@ -38,6 +38,19 @@ const GEO={
   let s=0, per=0; for(let i=0;i<p.length;i++){ const j=(i+1)%p.length; s+=p[i].x*p[j].y-p[j].x*p[i].y; per+=Math.hypot(p[j].x-p[i].x, p[j].y-p[i].y); }
   return {area:Math.abs(s)/2, perimetro:per, vertices:p.length};
  },
+ /* Lados que se cruzam (4.70.0): vértices fora de ordem desenham um "laço" e a fórmula de Gauss dá uma área errada, sem erro
+    nenhum. Devolve [{a:'V1–V2', b:'V3–V4'}, …] com a numeração dos vértices como o auxiliar os vê (as linhas vazias contam).
+    Só o cruzamento de verdade: lados vizinhos e pontos que só se tocam não contam, para não dar falso aviso. */
+ cruzamentos:function(vs){
+  const p=(vs||[]).map((v,i)=>({x:GEO.numUTM(v.e), y:GEO.numUTM(v.n), n:i+1})).filter(v=>!isNaN(v.x)&&!isNaN(v.y)); if(p.length<4) return [];
+  const o=(a,b,c)=>Math.sign((b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x)), out=[], k=p.length;
+  for(let i=0;i<k;i++) for(let j=i+2;j<k;j++){
+   if(i===0 && j===k-1) continue;                         // primeiro e último lados são vizinhos (fecham o polígono)
+   const a=p[i], b=p[(i+1)%k], c=p[j], d=p[(j+1)%k];
+   if(o(a,b,c)*o(a,b,d)<0 && o(c,d,a)*o(c,d,b)<0) out.push({a:'V'+a.n+'–V'+b.n, b:'V'+c.n+'–V'+d.n});
+  }
+  return out;
+ },
  numUTM:function(t){ t=String(t===undefined||t===null?'':t).trim().replace(/\s*m$/i,''); if(!t) return NaN; if(t.includes(',')) t=t.replace(/\./g,'').replace(',','.'); else if(/^\d{1,3}(\.\d{3})+$/.test(t)) t=t.replace(/\./g,''); return parseFloat(t); },
  fmtUTM:function(v){ return v.toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2}); }
 };

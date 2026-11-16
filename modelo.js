@@ -40,7 +40,7 @@ function novaVistoria(o){
   voltarEm:''                                                         // data combinada para voltar (opcional, só lembrete no aparelho)
  };
 }
-function medicaoCampo(){ return {local:'', horaIni:'', horaFim:'', leq:'', maximo:'', minimo:'', observacao:''}; }
+function medicaoCampo(){ return {local:'', horaIni:'', horaFim:'', leq:'', maximo:'', minimo:'', observacao:'', pos:null}; }   // pos: GPS do ponto de medição (0.9.13)
 
 /* Começa a vistoria: registra data e hora na primeira vez em que ela é aberta para trabalhar */
 function iniciarVistoria(v, agora){
@@ -49,6 +49,9 @@ function iniciarVistoria(v, agora){
  return v;
 }
 
+/* busca nas listas: sem acento, sem maiúscula, e "1234" acha "1.234/2026"; cada palavra digitada precisa aparecer (em qualquer ordem) */
+function normBusca(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/(\d)\.(?=\d)/g,'$1'); }
+function casaBusca(textos, q){ const termos=normBusca(q).split(/\s+/).filter(Boolean); if(!termos.length) return true; const s=normBusca([].concat(textos).join(' ')); return termos.every(t=>s.includes(t)); }
 function protocoloTexto(v){ const n=String(v.expedienteNum||'').trim(); return n? v.expedienteTipo+' '+n : 'Sem protocolo'; }
 
 /* Posição do GPS do aparelho → registro com UTM 22 S (SIRGAS 2000), como as ferramentas do computador usam */
@@ -125,14 +128,17 @@ function paraDocumento(v, fotosB64, elaborador){
   s.simp={atividade:v.assunto||'', expedienteTipo:v.expedienteTipo, expedienteNum:v.expedienteNum, logradouro:v.endereco, numero:'', referencia:'',
           bairro:v.bairro, coordE:E, coordN:N, responsavel:v.autuado||'', doc:'', datasVistoria:datas, corpo:'', fotos:fotos};
  } else if(v.tipoDocumento==='termo_arquivamento'){
-  s.arq={expedienteTipo:v.expedienteTipo==='Atendimento'? '1Doc' : v.expedienteTipo, expedienteNum:v.expedienteNum, datasVistoria:datas,
+  /* 0.9.13: o tipo real do expediente. Antes, "Atendimento" virava "1Doc", e o mesmo número aparecia como dois expedientes
+     (uma das causas dos documentos duplicados de 13/11). Desde 29/10 o Termo novo do computador também começa em "Atendimento". */
+  s.arq={expedienteTipo:v.expedienteTipo, expedienteNum:v.expedienteNum, datasVistoria:datas,
          coordE:E, coordN:N, corpo:'', fotos:fotos};
  } else if(v.tipoDocumento==='termo_ruido'){
   const R=v.ruido||{medicoes:[]};
   s.ruido={expedienteTipo:v.expedienteTipo, expedienteNum:v.expedienteNum, assunto:v.assunto||'Emissão de Ruídos', identificacao:v.autuado||'',
            logradouro:v.endereco, bairro:v.bairro, coordE:E, coordN:N, datasVistoria:datas, contexto:'', meteorologia:R.meteorologia||'',
+           /* cada medição com o GPS do próprio ponto, quando marcado (0.9.13); sem ele, o do local da vistoria, como antes */
            medicoes:(R.medicoes||[]).map(m=>({local:m.local||'', data:v.dataVistoria||'', horaIni:m.horaIni||'', horaFim:m.horaFim||'',
-             coordE:E, coordN:N, distancia:'', minimo:numeroOuNulo(m.minimo), maximo:numeroOuNulo(m.maximo), media:null, leq:numeroOuNulo(m.leq),
+             coordE:m.pos? (+m.pos.e).toFixed(2) : E, coordN:m.pos? (+m.pos.n).toFixed(2) : N, distancia:'', minimo:numeroOuNulo(m.minimo), maximo:numeroOuNulo(m.maximo), media:null, leq:numeroOuNulo(m.leq),
              amostras:0, taxa:null, serie:null, grafico:null, arquivo:'', observacao:m.observacao||''})),
            fotos:fotos};
  }
@@ -144,7 +150,12 @@ function paraDocumento(v, fotosB64, elaborador){
    O registro "atualizada", o nome de quem elaborou e a data do retorno combinado ficam de fora. */
 function impressaoDocumento(v){
  const fotos=(v.fotos||[]).map(f=>({data:String(f.id)+'#'+(f.versao||0), w:f.w, h:f.h}));
- const txt=JSON.stringify(paraDocumento(Object.assign({}, v, {atualizadaEm:'', voltarEm:''}), fotos, ''));   // o retorno combinado é agenda, não conteúdo
+ const doc=paraDocumento(Object.assign({}, v, {atualizadaEm:'', voltarEm:''}), fotos, '');   // o retorno combinado é agenda, não conteúdo
+ /* 0.9.13: o arquivamento passou a sair com o tipo real ("Atendimento", não "1Doc"). A impressão continua com a regra antiga
+    nesse ponto: senão, toda vistoria de arquivamento já entregue pareceria mudada e voltaria sozinha para a fila, regravando
+    o arquivo da pasta. Mudar o tipo de verdade (Atendimento → Memorando) continua mudando a impressão. */
+ if(doc.arq && doc.arq.expedienteTipo==='Atendimento') doc.arq.expedienteTipo='1Doc';
+ const txt=JSON.stringify(doc);
  let h=5381; for(let i=0;i<txt.length;i++) h=((h<<5)+h+txt.charCodeAt(i))|0;
  return (h>>>0).toString(36)+'.'+txt.length;
 }

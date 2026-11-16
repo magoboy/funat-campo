@@ -2,8 +2,8 @@
    Rotas pelo endereço (#inicio, #vistorias, #nova, #v/<id>, #foto/<id>/<n>, #envios, #pronta/<id>, #config).
    Cada vistoria fica em vistorias/<id>.json e as fotos em fotos/<id>/<foto>.jpg, na memória interna do app. */
 
-const VERSAO_APP = '0.9.11 (piloto 16)';
-const CODIGO_APP = 25;              // sobe a cada APK: o Android só instala por cima versão com código maior
+const VERSAO_APP = '0.9.13 (piloto 18)';
+const CODIGO_APP = 26;              // sobe a cada APK: o Android só instala por cima versão com código maior
 let VIST = [];                       // vistorias carregadas
 let cfg = lerCfg();
 
@@ -145,16 +145,16 @@ TELAS.inicio = function(){
 let abaVist='a_vistoriar', buscaVist='';
 TELAS.vistorias = function(){
  if(abaVist==='retornos' && !retornosAgendados(VIST).length) abaVist='a_vistoriar';
- const q=buscaVist.trim().toLowerCase();
+ const q=buscaVist.trim();
  const abas=[['a_vistoriar','Para vistoriar'],['em_andamento','Em andamento'],['concluida','Concluídas']].concat(cfg.planilhaAtiva? [['fiscalizadas','Já fiscalizadas']] : []).concat(retornosAgendados(VIST).length? [['retornos','Retornos']] : []);
- const casa=d=>!q || [d.protocolo,d.assunto,d.endereco,d.diligencias].join(' ').toLowerCase().includes(q);
+ const casa=d=>casaBusca([d.protocolo,d.assunto,d.endereco,d.diligencias,d.observacoes], q);
  const dems=abaVist==='a_vistoriar'? demandasParaVistoriar().filter(casa) : abaVist==='fiscalizadas'? demandasFiscalizadas().filter(casa) : [];
  const contar=k=>k==='retornos'? retornosAgendados(VIST).length : k==='fiscalizadas'? demandasFiscalizadas().length : VIST.filter(v=>v.status===k).length+(k==='a_vistoriar'? demandasParaVistoriar().length : 0);
- const lista=abaVist==='fiscalizadas'? [] : abaVist==='retornos'? retornosAgendados(VIST).filter(v=>!q || [protocoloTexto(v), v.assunto, v.bairro, v.endereco].join(' ').toLowerCase().includes(q)) : ordenadas(VIST.filter(v=>v.status===abaVist && (!q || [protocoloTexto(v), v.assunto, v.bairro, v.endereco, v.autuado].join(' ').toLowerCase().includes(q))));
+ const lista=abaVist==='fiscalizadas'? [] : abaVist==='retornos'? retornosAgendados(VIST).filter(v=>casaBusca([protocoloTexto(v), v.assunto, v.bairro, v.endereco, v.autuado], q)) : ordenadas(VIST.filter(v=>v.status===abaVist && casaBusca([protocoloTexto(v), v.assunto, v.bairro, v.endereco, v.autuado], q)));
  const itens=dems.map(d=>({sel:'d:'+idDemanda(d), d:d})).concat(lista.map(v=>({sel:'v:'+v.id, v:v})));
  if(LARGO() && itens.length && !itens.some(x=>x.sel===selVist)) selVist=itens[0].sel;
  ITENS_VIST=itens;
- return topo('Vistorias')+'<main class="pag com-nav"><div class="duas-col lista-det"><div class="col-a"><label class="busca">'+ic('busca')+'<input id="vBusca" type="search" placeholder="Buscar protocolo, assunto ou bairro" value="'+esc(buscaVist)+'"></label>'+
+ return topo('Vistorias')+'<main class="pag com-nav"><div class="duas-col lista-det"><div class="col-a"><label class="busca">'+ic('busca')+'<input id="vBusca" type="search" placeholder="Buscar protocolo, rua ou autuado" value="'+esc(buscaVist)+'"></label>'+
   '<div class="abas" role="tablist">'+abas.map(([k,r])=>'<button role="tab" aria-selected="'+(k===abaVist)+'" data-aba="'+k+'">'+r+' <span class="cont">'+contar(k)+'</span></button>').join('')+'</div>'+
   (['a_vistoriar','fiscalizadas'].includes(abaVist)? linhaPlanilha() : '')+(abaVist==='fiscalizadas'? '<p class="ajuda">Demandas ainda abertas na planilha que já têm vistoria: o que falta é o documento.</p>' : '')+
   '<div id="vLista">'+((lista.length||dems.length)? dems.map(cartaoDemanda).join('')+lista.map(abaVist==='retornos'? cartaoRetorno : cartao).join('') : '<div class="vazio"><p>Nada aqui'+(q?' com essa busca':'')+'.</p></div>')+'</div>'+
@@ -230,8 +230,25 @@ function blocoRuido(v){
    '<label class="campo"><span>Ponto de medição</span><input data-m="'+i+'" data-k="local" value="'+esc(m.local)+'" placeholder="Ex.: calçada em frente ao nº 120"></label>'+
    '<div class="linha2"><label class="campo"><span>Início</span><input type="time" data-m="'+i+'" data-k="horaIni" value="'+esc(m.horaIni)+'"></label><label class="campo"><span>Fim</span><input type="time" data-m="'+i+'" data-k="horaFim" value="'+esc(m.horaFim)+'"></label></div>'+
    '<div class="linha3"><label class="campo"><span>LAeq dB(A)</span><input inputmode="decimal" data-m="'+i+'" data-k="leq" value="'+esc(m.leq)+'"></label><label class="campo"><span>Máx.</span><input inputmode="decimal" data-m="'+i+'" data-k="maximo" value="'+esc(m.maximo)+'"></label><label class="campo"><span>Mín.</span><input inputmode="decimal" data-m="'+i+'" data-k="minimo" value="'+esc(m.minimo)+'"></label></div>'+
-   '<label class="campo"><span>Observação</span><input data-m="'+i+'" data-k="observacao" value="'+esc(m.observacao)+'"></label></div>').join('')+
+   '<label class="campo"><span>Observação</span><input data-m="'+i+'" data-k="observacao" value="'+esc(m.observacao)+'"></label>'+gpsMedicaoHtml(v, m, i)+'</div>').join('')+
   '<button class="bt claro largo" id="vMedir">'+ic('mais')+'Adicionar medição</button></details>';
+}
+/* GPS do ponto de medição (0.9.13): a medição feita na casa de quem denunciou ou na divisa tem a coordenada dela. Sem isto,
+   todas as medições iam para o Termo de ruídos com a coordenada do local da vistoria. */
+function gpsMedicaoHtml(v, m, i){
+ if(!m.pos) return '<button class="bt claro largo" data-mgps="'+i+'">'+ic('alvo')+'Marcar o GPS deste ponto</button>'
+  +'<p class="ajuda">Sem o GPS do ponto, a medição vai para o computador com a coordenada do local da vistoria.</p>';
+ const d=distanciaM(m.pos, v.local), ruim=m.pos.precisao!==null && m.pos.precisao>30;
+ return '<div class="utm medicao-gps"><span class="fuso">GPS deste ponto · UTM 22 S</span><b>E '+esc(GEO.fmtUTM(m.pos.e))+' m</b><b>N '+esc(GEO.fmtUTM(m.pos.n))+' m</b>'
+  +'<small>'+(m.pos.precisao!==null? '<span class="'+(ruim?'ruim':'boa')+'">precisão ±'+m.pos.precisao+' m</span>' : '')+(d!==null? (m.pos.precisao!==null? ' · ' : '')+'a '+esc(distanciaTexto(d))+' do local da vistoria' : '')+'</small></div>'
+  +'<div class="c-ac"><button class="bt claro" data-mgps="'+i+'">'+ic('alvo')+'Atualizar o GPS</button><button class="bt txt" data-mgps-tira="'+i+'">Tirar o GPS</button></div>';
+}
+async function registrarPosicaoMedicao(v, i){
+ const m=v.ruido.medicoes[i]; if(!m) return;
+ ocupado('Buscando o sinal do GPS…', {gps:true});
+ try{ const p=await Aparelho.posicao(); m.pos=posicaoDe(p.lat, p.lon, p.precisao); await gravarVistoria(v); ocupado(false); mostrar(true);
+  aviso('GPS da medição '+(i+1)+' registrado'+(m.pos.precisao!==null? ' (±'+m.pos.precisao+' m)' : '')+'.'); }
+ catch(e){ ocupado(false); alert(e.message||String(e)); }
 }
 TELAS.v = function(id){
  const v=acharVistoria(id); if(!v) return naoAchou(); const fim=v.status==='concluida';
@@ -265,6 +282,8 @@ TELAS.v.ligar = function(id){
  rd.querySelector('[data-r]').oninput=e=>{ v.ruido.meteorologia=e.target.value; gravarDepois(v); };
  $$('[data-m]').forEach(inp=>inp.oninput=()=>{ v.ruido.medicoes[+inp.dataset.m][inp.dataset.k]=inp.value; gravarDepois(v); });
  $$('[data-rm]').forEach(b=>b.onclick=async()=>{ if(!confirm('Remover a medição '+(+b.dataset.rm+1)+'?')) return; v.ruido.medicoes.splice(+b.dataset.rm,1); await gravarVistoria(v); mostrar(true); });
+ $$('[data-mgps]').forEach(b=>b.onclick=()=>registrarPosicaoMedicao(v, +b.dataset.mgps));
+ $$('[data-mgps-tira]').forEach(b=>b.onclick=async()=>{ const i=+b.dataset.mgpsTira; if(!confirm('Tirar o GPS da medição '+(i+1)+'? Ela volta a usar a coordenada do local da vistoria.')) return; v.ruido.medicoes[i].pos=null; await gravarVistoria(v); mostrar(true); });
  $('#vMedir').onclick=async()=>{ const m=medicaoCampo(); m.horaIni=horaCurta(); v.ruido.medicoes.push(m); v.ruido.usar=true; await gravarVistoria(v); mostrar(true); };
  $('#vApagar').onclick=()=>apagarVistoria(v); ligarDocumentoRetorno();
  if($('#vSalvar')) $('#vSalvar').onclick=async()=>{ await gravarAgora(); await gravarVistoria(v); aviso('Rascunho salvo neste aparelho.'); };

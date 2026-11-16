@@ -8,7 +8,7 @@ let ITIN=null, ITIN_DUPLA=null;
 const MIN_VISTORIA=30;
 const BASE_FUNAT_PADRAO={lat:-28.4847, lng:-49.0206};   /* Av. Marechal Deodoro, Oficinas (aproximada); o script V49 manda a do número 1311 */
 const MOTIVOS_NAO=['Ninguém no local','Endereço não encontrado','Acesso impedido','Chuva ou falta de tempo','Outro motivo'];
-let PLAN={aba:'dupla', tipo:'novas', bairro:'', sel:null};
+let PLAN={aba:'dupla', tipo:'novas', bairro:'', busca:'', sel:null};
 
 function hojeIso(d){ d=d||new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 const horaDe=iso=>{ const d=new Date(iso); return isNaN(d)? '' : String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };   /* hora local (o ISO é UTC) */
@@ -81,6 +81,12 @@ function todasDoPlano(){
  [a.minhas, a.equipe, r.minhas, r.equipe].forEach(L=>L.forEach(d=>{ const id=idDemanda(d); if(vistos.has(id)) return; vistos.add(id); out.push(d); }));
  return out;
 }
+/* busca no planejamento: olha todas as listas de uma vez (para vistoriar e retornos; minhas, da dupla e da equipe), as minhas primeiro.
+   Acha pelo protocolo (com ou sem ponto), assunto, endereço, fiscal, observações e diligências da planilha, data da notificação,
+   e pelo autuado e endereço da minha vistoria anterior. */
+function textosDaDemanda(d){ const v=!d.doColega && vistoriaDe(d);
+ return [d.protocolo, d.assunto, d.endereco, d.fiscal, d.observacoes, d.diligencias, d.notificacao? 'notificada '+d.notificacao : '', v? v.autuado : '', v? v.endereco : '', v? v.bairro : '']; }
+function buscarNoPlano(q){ return todasDoPlano().filter(d=>casaBusca(textosDaDemanda(d), q)).sort((a,b)=>(a.doColega?1:0)-(b.doColega?1:0)); }
 /* o script da planilha ainda é anterior ao V52: as notificadas não vêm */
 function scriptSemRetornos(){ return !!(DEMANDAS && DEMANDAS.lidoEm && !DEMANDAS.retornos); }
 function infoRetorno(d){
@@ -133,10 +139,10 @@ TELAS.planejar = function(){
  const {minhas, equipe}=demandasDoPlano(), R=demandasDeRetorno(), parc=parceiroHoje(), cols=colegas(), tipoRet=PLAN.tipo==='retornos';
  const abas=(m,e)=>({minhas:m, dupla:m.concat(e.filter(d=>doParceiro(d, parc))), equipe:m.concat(e)});
  const novas=abas(minhas, equipe), voltas=abas(R.minhas, R.equipe), daDupla=novas.dupla, aba=['minhas','dupla','equipe'].indexOf(PLAN.aba)>=0? PLAN.aba : 'dupla';
- const lista=(tipoRet? voltas : novas)[aba];
+ const q=String(PLAN.busca||'').trim(), achadas=q? buscarNoPlano(q) : null, lista=achadas || (tipoRet? voltas : novas)[aba];
  if(!PLAN.sel && DEMANDAS && DEMANDAS.lidoEm){ const it=itinerarioDeHoje(); PLAN.sel=new Set(it? it.paradas.map(p=>p.id) : daDupla.filter(d=>d.situacao!=='em_andamento' && (!d.doColega || pontoDe(d))).map(idDemanda)); }
  const bairros={}; lista.forEach(d=>{ const b=bairroDe(d.endereco); if(b) bairros[b]=(bairros[b]||0)+1; });
- const vis=PLAN.bairro? lista.filter(d=>bairroDe(d.endereco)===PLAN.bairro) : lista;
+ const vis=!achadas && PLAN.bairro? lista.filter(d=>bairroDe(d.endereco)===PLAN.bairro) : lista;
  const base=baseFunat(), sel=PLAN.sel? todasDoPlano().filter(d=>PLAN.sel.has(idDemanda(d))) : [];
  const est=estimativa(sel, base);
  return topo('Planejar o dia', {voltar:true, direita:'<span class="pilula">'+esc(hojeExtenso().split(',')[0])+', '+new Date().getDate()+'/'+(new Date().getMonth()+1)+'</span>'})+'<main class="pag com-rodape"><div class="duas-col plano"><div class="col-a">'+
@@ -144,14 +150,17 @@ TELAS.planejar = function(){
    '<label class="it-pessoa"><select id="plParceiro"><option value="">Sem dupla</option>'+cols.map(f=>'<option value="'+esc(f)+'"'+(f===parc?' selected':'')+'>'+esc(nomeFiscal(f))+'</option>').join('')+'</select></label></div>'+
    '<p class="ajuda"><span>'+ic('aparelho')+'No mesmo veículo. Cada fiscal vistoria só as suas demandas: as do colega entram para montar a rota.</span></p></section>'+
   (scriptSemItinerario()? '<p class="nota-alerta">'+ic('alerta')+'<span><b>A planilha respondeu sem as demandas da equipe e sem as posições.</b> O endereço do script ainda roda a versão antiga (V48). No Apps Script: Implantar › Gerenciar implantações › ✏️ › Versão: Nova versão › Implantar. Depois, toque em "Ler agora" em Meus dados › Demandas da planilha.</span></p>' : '')+
-  '<div class="it-seg tipo" role="group" aria-label="O que escolher">'+[['novas','Para vistoriar',novas[aba].length],['retornos','Retornos',voltas[aba].length]].map(([v,r,n])=>'<button class="'+((tipoRet? 'retornos' : 'novas')===v?'at':'')+'" data-tipo-plan="'+v+'">'+r+' <b>'+n+'</b></button>').join('')+'</div>'+
+  '<label class="busca it-busca">'+ic('busca')+'<input id="plBusca" type="search" enterkeyhint="search" placeholder="Buscar protocolo, rua ou autuado" value="'+esc(PLAN.busca||'')+'"></label>'+
+  (achadas? '<p class="faixa-in">'+ic('busca')+'<span><b>'+achadas.length+' encontrada'+(achadas.length===1?'':'s')+'</b> em todas as listas: para vistoriar e retornos, suas e da equipe. <button class="bt txt mini-bt" id="plSemBusca">limpar a busca</button></span></p>'+
+   (scriptSemRetornos()? '<p class="nota-alerta">'+ic('alerta')+'<span><b>As demandas notificadas ainda não chegam ao app.</b> O script da planilha é anterior ao V52.</span></p>' : '') : '')+
+  (achadas? '' : '<div class="it-seg tipo" role="group" aria-label="O que escolher">'+[['novas','Para vistoriar',novas[aba].length],['retornos','Retornos',voltas[aba].length]].map(([v,r,n])=>'<button class="'+((tipoRet? 'retornos' : 'novas')===v?'at':'')+'" data-tipo-plan="'+v+'">'+r+' <b>'+n+'</b></button>').join('')+'</div>'+
   (tipoRet? '<p class="ajuda"><span>'+ic('girar')+'Demandas que já foram fiscalizadas ou notificadas. Na parada, o app abre o retorno ao local e pergunta o motivo.</span></p>' : '')+
   (tipoRet && scriptSemRetornos()? '<p class="nota-alerta">'+ic('alerta')+'<span><b>As demandas notificadas ainda não chegam ao app.</b> O script da planilha é anterior ao V52. As fiscalizadas e as vistorias deste aparelho aparecem assim mesmo.</span></p>' : '')+
   '<div class="it-seg">'+[['minhas','Minhas',(tipoRet? voltas : novas).minhas.length],['dupla','Da dupla',(tipoRet? voltas : novas).dupla.length],['equipe','Equipe',(tipoRet? voltas : novas).equipe.length]].map(([v,r,n])=>'<button class="'+(aba===v?'at':'')+'" data-aba-plan="'+v+'">'+r+' <b>'+n+'</b></button>').join('')+'</div>'+
-  '<div class="chips-rolam"><button class="chip'+(PLAN.bairro?'':' at')+'" data-bairro="">Todos '+lista.length+'</button>'+Object.entries(bairros).sort((a,b)=>b[1]-a[1]).map(([b,n])=>'<button class="chip'+(PLAN.bairro===b?' at':'')+'" data-bairro="'+esc(b)+'">'+esc(b)+' '+n+'</button>').join('')+'</div>'+
+  '<div class="chips-rolam"><button class="chip'+(PLAN.bairro?'':' at')+'" data-bairro="">Todos '+lista.length+'</button>'+Object.entries(bairros).sort((a,b)=>b[1]-a[1]).map(([b,n])=>'<button class="chip'+(PLAN.bairro===b?' at':'')+'" data-bairro="'+esc(b)+'">'+esc(b)+' '+n+'</button>').join('')+'</div>')+
   (itinerarioDeHoje()? '<p class="faixa-in">'+ic('rota')+'<span>Já existe um itinerário hoje, com '+itinerarioDeHoje().paradas.length+' paradas. Otimizar de novo substitui a rota; as paradas já resolvidas continuam marcadas.</span></p>' : '')+
   '<p class="it-sel"><span>'+sel.length+' selecionada'+(sel.length===1?'':'s')+(sel.length? ' · <button class="bt txt mini-bt" id="plLimpar">limpar</button>' : '')+'</span><button class="bt txt mini-bt" id="plTodas">'+(PLAN.sel && vis.length && vis.every(d=>PLAN.sel.has(idDemanda(d)))? 'Desmarcar estas' : 'Marcar estas')+'</button></p>'+
-  (vis.length? vis.map(d=>cartaoPlano(d, base)).join('') : '<div class="vazio"><p>'+(tipoRet? 'Nenhum retorno nesta lista.' : 'Nenhuma demanda para vistoriar nesta lista.')+'</p><p class="ajuda">'+(DEMANDAS && DEMANDAS.equipe? '' : 'Leia a planilha de novo no Wi-Fi da FUNAT para trazer as demandas da equipe.')+'</p></div>')+
+  (vis.length? vis.map(d=>cartaoPlano(d, base)).join('') : achadas? '<div class="vazio"><p>Nada encontrado com essa busca.</p><p class="ajuda">A busca olha as demandas que a planilha mandou ao app (as suas, as da equipe e as notificadas) e as vistorias deste aparelho. Confira o número, ou leia a planilha de novo no Wi-Fi da FUNAT.</p></div>' : '<div class="vazio"><p>'+(tipoRet? 'Nenhum retorno nesta lista.' : 'Nenhuma demanda para vistoriar nesta lista.')+'</p><p class="ajuda">'+(DEMANDAS && DEMANDAS.equipe? '' : 'Leia a planilha de novo no Wi-Fi da FUNAT para trazer as demandas da equipe.')+'</p></div>')+
   '</div><aside class="col-b so-largo"><div id="mapaPlano" class="it-mapa lado alto" role="img" aria-label="Mapa das demandas escolhidas"></div>'+
    '<section class="bloco it-resumo-lado"><h2>Resumo do roteiro</h2><p class="it-grande"><b>'+sel.length+' parada'+(sel.length===1?'':'s')+'</b>'+(sel.length? ' · ~'+esc(kmTxt(est.dist))+' · ~'+esc(duracaoTxt(est.dur+sel.length*MIN_VISTORIA*60))+' com as vistorias' : '')+'</p>'+
    '<p class="ajuda"><span>Estimativa em linha reta. “Otimizar a rota” calcula pelas ruas e define a ordem.</span></p>'+
@@ -194,6 +203,8 @@ TELAS.planejar.ligar = function(){
  $$('[data-aba-plan]').forEach(b=>b.onclick=()=>{ PLAN.aba=b.dataset.abaPlan; PLAN.bairro=''; mostrar(true); });
  $$('[data-tipo-plan]').forEach(b=>b.onclick=()=>{ PLAN.tipo=b.dataset.tipoPlan; PLAN.bairro=''; mostrar(true); });
  $$('[data-bairro]').forEach(b=>b.onclick=()=>{ PLAN.bairro=b.dataset.bairro; mostrar(true); });
+ const ib=$('#plBusca'); if(ib) ib.oninput=()=>{ PLAN.busca=ib.value; const pos=ib.selectionStart; mostrar(true); const n=$('#plBusca'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(e){} } };
+ const sb=$('#plSemBusca'); if(sb) sb.onclick=()=>{ PLAN.busca=''; mostrar(true); const n=$('#plBusca'); if(n) n.focus(); };
  $$('[data-sel]').forEach(c=>c.onchange=()=>{ PLAN.sel=PLAN.sel||new Set(); if(c.checked) PLAN.sel.add(c.dataset.sel); else PLAN.sel.delete(c.dataset.sel); mostrar(true); });
  $$('[data-link]').forEach(b=>b.onclick=e=>{ e.preventDefault(); colarLink(b.dataset.link); });
  const tt=$('#plTodas'); if(tt) tt.onclick=()=>{ PLAN.sel=PLAN.sel||new Set(); const ids=$$('[data-sel]').map(c=>c.dataset.sel), todas=ids.every(i=>PLAN.sel.has(i)); ids.forEach(i=>todas? PLAN.sel.delete(i) : PLAN.sel.add(i)); mostrar(true); };

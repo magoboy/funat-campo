@@ -346,6 +346,7 @@ main[class*="anim-"] .grande-ok{animation:mAcende 260ms var(--m-entra) 80ms back
 .it-pessoa{display:inline-flex;align-items:center;min-height:44px;border-radius:22px;padding:0 14px;background:var(--sup2);font-weight:600}
 .it-pessoa.eu{background:var(--azul);color:#fff}
 .it-pessoa select{border:0;background:transparent;font:inherit;font-weight:600;min-height:44px;color:var(--texto)}
+.it-busca{margin:2px 0 10px}
 .it-seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--sup2);border-radius:24px;padding:4px;margin:4px 0 10px}
 .it-seg button{min-height:44px;border:0;border-radius:20px;background:transparent;font-weight:600;font-size:14px;color:var(--texto2)}
 .it-seg button.at{background:var(--azul);color:#fff}.it-seg button b{font-weight:700;margin-left:2px}
@@ -506,3 +507,7 @@ button.resumo-docs{width:100%;border:0;font:inherit;text-align:left;cursor:point
 
 /* Planejar o dia: Para vistoriar | Retornos */
 .it-seg.tipo{grid-template-columns:repeat(2,1fr);margin-bottom:6px}
+
+/* GPS do ponto de medição (0.9.13) */
+.medicao .medicao-gps{margin-top:8px}
+.medicao [data-mgps]{margin-top:8px}
